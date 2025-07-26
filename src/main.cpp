@@ -1,4 +1,5 @@
 #include "secrets.h"
+#include "time_utils.h"
 #include <NTPClient.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
@@ -10,8 +11,6 @@ WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", 0,
                      60 * 60 * 1000); // UTC offset (0), update interval 1h
 
-String formatMillis(unsigned long rawMillis);
-String getFormattedLocalTime();
 bool setupWiFi();
 void setupNTP();
 
@@ -45,19 +44,6 @@ void loop() {
         timeClient.update(); // Non-blocking sync
     }
     vTaskDelay(1000); // Main loop does nothing, just keeps the task running
-}
-
-String formatMillis(unsigned long rawMillis) {
-    unsigned long hours = rawMillis / 3600000;
-    unsigned long minutes = (rawMillis % 3600000) / 60000;
-    unsigned long seconds = (rawMillis % 60000) / 1000;
-    unsigned long millisec = rawMillis % 1000;
-
-    char timeBuffer[16];
-    snprintf(timeBuffer, sizeof(timeBuffer), "%02lu:%02lu:%02lu.%03lu", hours, minutes, seconds,
-             millisec);
-
-    return String(timeBuffer);
 }
 
 bool setupWiFi() {
@@ -100,23 +86,4 @@ void setupNTP() {
 
     // Now localtime() will use timezone with DST
     Serial.printf("Synchronised local time: %s\n", getFormattedLocalTime().c_str());
-}
-
-/**
- * @brief Returns the current local time as a formatted string.
- *
- * This function retrieves the current system time, converts it to local time,
- * and formats it as a string in the form "🕒 Real time: YYYY-MM-DD HH:MM:SS".
- * It uses only POSIX time functions (time, localtime_r, strftime) for all
- * operations.
- *
- * @return String containing the formatted local time.
- */
-String getFormattedLocalTime() {
-    time_t now = time(nullptr);
-    struct tm timeinfo;
-    localtime_r(&now, &timeinfo);
-    char buf[32];
-    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
-    return String(buf);
 }
