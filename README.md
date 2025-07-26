@@ -1,11 +1,13 @@
-# Esp32 firmware for clock with NTP sync
+# Firmware for a digital clock based on ESP32 and MAX7219 display, with time synchronization via NTP
 
-This is a PlatformIO project that utilizes the Arduino and ESP-IDF frameworks.
+This is a PlatformIO project that utilises the Arduino and ESP-IDF frameworks.
 
-It connects to WiFi and uses NTP to sync real time.
-Time is resynchronised every 1h.
-It should sufficiently mitigate the imprecise operation of the built-in RTC.
-The time is displayed on 32x8 MAX-7219 display.
+## Features
+
+- It connects to WiFi and uses NTP to sync real time.
+- Time is resynchronised every 1h. This should sufficiently mitigate the imprecise operation of the built-in RTC.
+- The time is displayed on 32x8 MAX7219 display.
+- I try to make it as low power as possible without making it unreliable or too complicated.
 
 ## Setup
 
