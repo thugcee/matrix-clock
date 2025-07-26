@@ -1,27 +1,18 @@
-How to build PlatformIO based project
-=====================================
+# Esp32 firmware for clock with NTP sync
 
-1. [Install PlatformIO Core](https://docs.platformio.org/page/core.html)
-2. Download [development platform with examples](https://github.com/platformio/platform-espressif32/archive/develop.zip)
-3. Extract ZIP archive
-4. Run these commands:
+This is a PlatformIO project that utilizes the Arduino and ESP-IDF frameworks.
 
-```shell
-# Change directory to example
-$ cd platform-espressif32/examples/espidf-arduino-blink
+It connects to WiFi and uses NTP to sync real time.
+Time is resynchronised every 1h.
+It should sufficiently mitigate the imprecise operation of the built-in RTC.
+The time is displayed on 32x8 MAX-7219 display.
 
-# Build project
-$ pio run
+## Setup
 
-# Upload firmware
-$ pio run --target upload
+Copy `src/secrets.cpp.dist` → `src/secrets.cpp` and fill in your WiFi credentials.
 
-# Build specific environment
-$ pio run -e esp32dev
+## Todo
 
-# Upload firmware for the specific environment
-$ pio run -e esp32dev --target upload
-
-# Clean build files
-$ pio run --target clean
-```
+- Add weather forecast.
+- Add support for gestures.
+- Remove the Arduino loop and relay on FreeRTOS tasks only.
