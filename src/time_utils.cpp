@@ -1,6 +1,6 @@
+#include <WString.h>
 #include <stdio.h>
 #include <sys/time.h> // At the top of your file
-#include <WString.h>
 
 String getFormattedLocalTime() {
     time_t now = time(nullptr);

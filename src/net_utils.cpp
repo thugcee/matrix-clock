@@ -1,0 +1,46 @@
+#include <NTPClient.h>
+#include <WiFi.h>
+#include <secrets.h>
+#include <time_utils.h>
+
+bool setupWiFi() {
+    Serial.println("Connecting to WiFi...");
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    delay(2000); // Give some time for WiFi to connect
+
+    int timeout = 20;
+    while (WiFi.status() != WL_CONNECTED && timeout > 0) {
+        delay(5000);
+        Serial.println("  still waiting for WiFi...");
+        timeout--;
+    }
+
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("Failed to connect to WiFi, disabling WiFi.");
+        WiFi.mode(WIFI_OFF); // Disable WiFi if not connected
+        return false;
+    }
+
+    Serial.println("WiFi connected! IP: " + WiFi.localIP().toString());
+    return true;
+}
+
+void setupNTP(NTPClient& timeClient) {
+    timeClient.begin();
+    timeClient.forceUpdate(); // Blocking call to sync time immediately
+    Serial.printf("Synchronised UTC time: %s\n", timeClient.getFormattedTime().c_str());
+
+    time_t utc = timeClient.getEpochTime();
+
+    // Set ESP32 system time (RTC)
+    struct timeval tv;
+    tv.tv_sec = utc;
+    tv.tv_usec = 0;
+    settimeofday(&tv, nullptr);
+
+    setenv("TZ", TIMEZONE, 1);
+    tzset();
+
+    // Now localtime() will use timezone with DST
+    Serial.printf("Synchronised local time: %s\n", getFormattedLocalTime().c_str());
+}

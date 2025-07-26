@@ -1,7 +1,5 @@
+#pragma once
 #include <WString.h>
-
-#ifndef TIME_UTILS_H
-#define TIME_UTILS_H
 
 /**
  * @brief Returns the current local time as a formatted string.
@@ -25,5 +23,3 @@ String getFormattedLocalTime();
  * @return A String representing the formatted time.
  */
 String formatMillis(unsigned long rawMillis);
-
-#endif // TIME_UTILS_H
