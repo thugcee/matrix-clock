@@ -11,7 +11,7 @@
  *
  * @return String containing the formatted local time.
  */
-String getFormattedLocalTime();
+String getFormattedLocalTime(const char* format = "%Y-%m-%d %H:%M:%S");
 
 /**
  * @brief Formats a duration given in milliseconds into a human-readable string.

@@ -1,13 +1,13 @@
 #include <WString.h>
 #include <stdio.h>
-#include <sys/time.h> // At the top of your file
+#include <sys/time.h>
 
-String getFormattedLocalTime() {
+String getFormattedLocalTime(const char* format) {
     time_t now = time(nullptr);
     struct tm timeinfo;
     localtime_r(&now, &timeinfo);
     char buf[32];
-    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
+    strftime(buf, sizeof(buf), format, &timeinfo);
     return String(buf);
 }
 
