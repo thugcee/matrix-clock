@@ -1,7 +1,7 @@
+#include "result.h"
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <WString.h>
-#include <result.hpp>
 
 StringResult getForecast() {
     if (WiFi.status() != WL_CONNECTED) {
@@ -29,7 +29,8 @@ StringResult getForecast() {
             if (error) {
                 http.end();
                 // Return a more specific JSON error
-                return StringResult::Err("Error: JSON deserialization failed: " + String(error.c_str()));
+                return StringResult::Err("Error: JSON deserialization failed: " +
+                                         String(error.c_str()));
             }
 
             // Check if the expected data is present
@@ -60,7 +61,8 @@ StringResult getForecast() {
             }
 
             http.end(); // Free resources
-            return StringResult::Ok("Min: " + String(minTemp, 1) + "°C, Max: " + String(maxTemp, 1) + "°C");
+            return StringResult::Ok("Min: " + String(minTemp, 1) +
+                                    "°C, Max: " + String(maxTemp, 1) + "°C");
 
         } else {
             http.end();
@@ -71,7 +73,7 @@ StringResult getForecast() {
         http.end();
         // Provide a more descriptive client-side error
         return StringResult::Err("Error: HTTP GET request failed, error: " +
-                       String(http.errorToString(httpCode).c_str()));
+                                 String(http.errorToString(httpCode).c_str()));
     }
     if (WiFi.status() != WL_CONNECTED) {
         return StringResult::Err("Error: WiFi not connected.");

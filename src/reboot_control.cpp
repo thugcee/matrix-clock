@@ -1,4 +1,4 @@
-#include "RebootControl.h"
+#include "reboot_control.h"
 #include <Arduino.h>
 
 // Reboot storm detection mechanism.

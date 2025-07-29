@@ -1,8 +1,19 @@
+#include "secrets.h"
+#include "time_utils.h"
 #include <NTPClient.h>
 #include <WiFi.h>
-#include <secrets.h>
-#include <time_utils.h>
 
+namespace net_utils {
+
+/**
+ * @brief Sets up the WiFi connection.
+ *
+ * This function attempts to connect to the specified WiFi network using the credentials
+ * defined in the secrets.h file. It will retry for a maximum of 20 seconds before giving up.
+ * If the connection is successful, it returns true; otherwise, it returns false.
+ *
+ * @return true if WiFi is connected, false otherwise.
+ */
 bool setupWiFi() {
     Serial.println("Connecting to WiFi...");
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -25,6 +36,14 @@ bool setupWiFi() {
     return true;
 }
 
+/**
+ * @brief Sets up the NTP client for time synchronization.
+ *
+ * This function initializes the NTP client with the specified server and updates the local
+ * system time. It also sets the timezone based on the TIMEZONE macro defined in secrets.h.
+ *
+ * @param timeClient Reference to the NTPClient instance to be set up.
+ */
 void setupNTP(NTPClient& timeClient) {
     timeClient.begin();
     timeClient.forceUpdate(); // Blocking call to sync time immediately
@@ -44,3 +63,5 @@ void setupNTP(NTPClient& timeClient) {
     // Now localtime() will use timezone with DST
     Serial.printf("Synchronised local time: %s\n", getFormattedLocalTime().c_str());
 }
+
+} // namespace net_utils

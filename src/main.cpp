@@ -1,4 +1,6 @@
-#include "RebootControl.h"
+#include "forecast.h"
+#include "net_utils.h"
+#include "reboot_control.h"
 #include "secrets.h"
 #include "time_utils.h"
 #include <MD_MAX72xx.h>
@@ -6,8 +8,6 @@
 #include <NTPClient.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
-#include <forecast.h>
-#include <net_utils.h>
 #include <stdio.h>
 #include <sys/time.h>
 #include <time.h>
@@ -81,18 +81,18 @@ void setup() {
     // Monitor uptime to reset reboot counter after stable runtime.
     xTaskCreate(RebootControl::resetRebootCounterTask, "ResetRebootCounter", 2048, NULL, 1, NULL);
 
+    wifi_enabled = net_utils::setupWiFi();
+    net_utils::setupNTP(timeClient);
+
+    xTaskCreatePinnedToCore(&printStatusTask, "Print Status", 8192, NULL, 1, NULL, 1);
+
+    // Initialize the weather forecast task
     forecastMutex = xSemaphoreCreateMutex();
     if (forecastMutex == NULL) {
         Serial.println("Error: Failed to create mutex.");
         forecastData = "Er:Mutex";
         forecastEnabled = false; // Disable forecast updates
     }
-
-    wifi_enabled = setupWiFi();
-    setupNTP(timeClient);
-
-    xTaskCreatePinnedToCore(&printStatusTask, "Print Status", 8192, NULL, 1, NULL, 1);
-
     if (wifi_enabled && forecastEnabled) {
         xTaskCreatePinnedToCore(weatherUpdateTask, "WeatherUpdateTask", 8192, NULL, 1, NULL, 0);
     } else {
