@@ -40,7 +40,7 @@ void weatherUpdateTask(void* pvParameters) {
             Serial.println("[Task] Successfully fetched forecast.");
             newForecastStr = newForecast.unwrap();
         }
-        
+
         if (xSemaphoreTake(forecastMutex, portMAX_DELAY) == pdTRUE) {
             forecastData = newForecastStr;
             xSemaphoreGive(forecastMutex);
@@ -114,6 +114,12 @@ void loop() {
         timeClient.update(); // Non-blocking sync
     }
 
+    struct tm currentTime = getLocalTime();
+    int currentSecond = currentTime.tm_sec;
+
     P.printf("%s", getFormattedLocalTime("%H : %M").c_str());
+    P.getGraphicObject()->setPoint(ROW_SIZE - 1, currentSecond / 2, false);
+    P.getGraphicObject()->setPoint(ROW_SIZE - 1, 1 + currentSecond / 2, true);
+
     vTaskDelay(1000); // Main loop does nothing, just keeps the task running
 }

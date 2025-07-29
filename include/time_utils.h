@@ -1,6 +1,8 @@
 #pragma once
 #include <WString.h>
 
+struct tm getLocalTime();
+
 /**
  * @brief Returns the current local time as a formatted string.
  *

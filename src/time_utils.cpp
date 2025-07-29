@@ -11,6 +11,13 @@ String getFormattedLocalTime(const char* format) {
     return String(buf);
 }
 
+struct tm getLocalTime() {
+    time_t now = time(nullptr);
+    struct tm timeinfo;
+    localtime_r(&now, &timeinfo);
+    return timeinfo;
+}
+
 String formatMillis(unsigned long rawMillis) {
     unsigned long hours = rawMillis / 3600000;
     unsigned long minutes = (rawMillis % 3600000) / 60000;
