@@ -1,3 +1,4 @@
+#include "RebootControl.h"
 #include "secrets.h"
 #include "time_utils.h"
 #include <MD_MAX72xx.h>
@@ -8,7 +9,7 @@
 #include <forecast.h>
 #include <net_utils.h>
 #include <stdio.h>
-#include <sys/time.h> // At the top of your file
+#include <sys/time.h>
 #include <time.h>
 
 WiFiUDP ntpUDP;
@@ -67,6 +68,18 @@ void printStatusTask(void* parameter) {
 bool wifi_enabled = false;
 void setup() {
     Serial.begin(115200);
+    delay(100);
+
+    // Reboot storm detection mechanism.
+    RebootControl::rebootCount++;
+    if (RebootControl::rebootCount >= RebootControl::MAX_REBOOTS) {
+        Serial.println("Reboot storm detected! Entering deep sleep for " +
+                       String(RebootControl::SLEEP_TIME_ON_STORM_US) + " ms");
+        esp_sleep_enable_timer_wakeup(RebootControl::SLEEP_TIME_ON_STORM_US);
+        esp_deep_sleep_start();
+    }
+    // Monitor uptime to reset reboot counter after stable runtime.
+    xTaskCreate(RebootControl::resetRebootCounterTask, "ResetRebootCounter", 2048, NULL, 1, NULL);
 
     forecastMutex = xSemaphoreCreateMutex();
     if (forecastMutex == NULL) {
