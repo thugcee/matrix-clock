@@ -53,6 +53,18 @@ void weatherUpdateTask(void* pvParameters) {
     }
 }
 
+String timeData = "err time";
+void minuteChangeTask(void* pvParameters) {
+    while (1) {
+        timeData = getFormattedLocalTime("%H : %M");
+        Serial.printf("Minute changed! New time: %s\n", getFormattedLocalTime().c_str());
+        // Calculate time until next minute (in ms)
+        struct tm timeinfo = getLocalTime();
+        int secondsToNextMinute = 60 - timeinfo.tm_sec;
+        vTaskDelay(pdMS_TO_TICKS(secondsToNextMinute * 1000));
+    }
+}
+
 // Task that prints device uptime and local time periodically.
 void printStatusTask(void* parameter) {
     while (true) {
@@ -84,7 +96,9 @@ void setup() {
     wifi_enabled = net_utils::setupWiFi();
     net_utils::setupNTP(timeClient);
 
-    xTaskCreatePinnedToCore(&printStatusTask, "Print Status", 8192, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(minuteChangeTask, "Minute Change Watcher", 4096, NULL, 1, NULL, 0);
+
+    xTaskCreatePinnedToCore(printStatusTask, "Print Status", 8192, NULL, 1, NULL, 1);
 
     // Initialize the weather forecast task
     forecastMutex = xSemaphoreCreateMutex();
@@ -117,9 +131,20 @@ void loop() {
     struct tm currentTime = getLocalTime();
     int currentSecond = currentTime.tm_sec;
 
-    P.printf("%s", getFormattedLocalTime("%H : %M").c_str());
-    P.getGraphicObject()->setPoint(ROW_SIZE - 1, currentSecond / 2, false);
-    P.getGraphicObject()->setPoint(ROW_SIZE - 1, 1 + currentSecond / 2, true);
-
-    vTaskDelay(1000); // Main loop does nothing, just keeps the task running
+    if (forecastEnabled && currentSecond % FORECAST_UPDATE_INTERVAL_SECONDS == 3) {
+        if (xSemaphoreTake(forecastMutex, portMAX_DELAY) == pdTRUE) {
+            P.setTextAlignment(PA_LEFT);
+            P.printf("%s", forecastData.c_str());
+            xSemaphoreGive(forecastMutex);
+            vTaskDelay(pdMS_TO_TICKS(FORECAST_DISPLAY_TIME_SECONDS*1000));
+        }
+    } else {
+        P.setTextAlignment(PA_CENTER);
+        P.printf("%s", timeData.c_str());
+        // Display the current second as a point on the last row
+        int column = map(currentSecond, 0, 59, 0, P.getGraphicObject()->getColumnCount() - 2);
+        P.getGraphicObject()->setPoint(ROW_SIZE - 1, column, false);
+        P.getGraphicObject()->setPoint(ROW_SIZE - 1, 1 + column, true);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }

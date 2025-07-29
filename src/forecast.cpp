@@ -62,8 +62,7 @@ StringResult getForecast() {
             }
 
             http.end(); // Free resources
-            return StringResult::Ok("Min: " + String(minTemp, 1) +
-                                    "°C, Max: " + String(maxTemp, 1) + "°C");
+            return StringResult::Ok(String((int)round(minTemp)) + "-" + String((int)round(maxTemp)) + "°");
 
         } else {
             http.end();
