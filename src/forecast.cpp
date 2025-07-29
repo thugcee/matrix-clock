@@ -34,7 +34,8 @@ StringResult getForecast() {
             }
 
             // Check if the expected data is present
-            if (!doc.containsKey("hourly") || !doc["hourly"].containsKey("temperature_2m")) {
+            if (!doc["hourly"].is<JsonObject>() ||
+                !doc["hourly"]["temperature_2m"].is<JsonArray>()) {
                 http.end();
                 return StringResult::Err("Error: Invalid JSON format from API.");
             }
