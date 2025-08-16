@@ -3,7 +3,7 @@
 #include <HTTPClient.h>
 #include <WString.h>
 
-StringResult getForecast() {
+StringResult getForecast(int startHour) {
     if (WiFi.status() != WL_CONNECTED) {
         return StringResult::Err("Error: WiFi not connected.");
     }
@@ -11,7 +11,7 @@ StringResult getForecast() {
     HTTPClient http;
     String apiURL =
         "https://api.open-meteo.com/v1/"
-        "forecast?latitude=53.4289&longitude=14.553&hourly=temperature_2m&forecast_days=1";
+        "forecast?latitude=53.4289&longitude=14.553&hourly=temperature_2m&forecast_days=2";
 
     // Start the HTTP request
     http.begin(apiURL);
@@ -42,17 +42,18 @@ StringResult getForecast() {
 
             JsonArray temps = doc["hourly"]["temperature_2m"].as<JsonArray>();
 
-            if (temps.isNull() || temps.size() < 10) {
+            if (temps.isNull() || temps.size() <= startHour + FORECAST_HOURS) {
                 http.end();
                 return StringResult::Err("Error: Not enough forecast data available.");
             }
 
-            // Find min and max temperature in the next 10 hours
+            // Find min and max temperature in the next FORECAST_HOURS hours
             float minTemp = temps[0].as<float>();
             float maxTemp = temps[0].as<float>();
 
-            for (int i = 1; i < 10; i++) {
+            for (int i = startHour; i < temps.size() && i < startHour + FORECAST_HOURS; i++) {
                 float currentTemp = temps[i].as<float>();
+                Serial.printf("Hour %02d: Temp = %.2f\n", i >= 24 ? i - 24 : i, currentTemp);
                 if (currentTemp < minTemp) {
                     minTemp = currentTemp;
                 }

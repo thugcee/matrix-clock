@@ -18,6 +18,13 @@ struct tm getLocalTime() {
     return timeinfo;
 }
 
+int getGMTHour() {
+    time_t now = time(nullptr);
+    struct tm timeinfo;
+    gmtime_r(&now, &timeinfo);
+    return timeinfo.tm_hour;
+}
+
 String formatMillis(unsigned long rawMillis) {
     unsigned long hours = rawMillis / 3600000;
     unsigned long minutes = (rawMillis % 3600000) / 60000;

@@ -1,6 +1,8 @@
 #pragma once
 #include <WString.h>
 
+int getGMTHour();
+
 struct tm getLocalTime();
 
 /**

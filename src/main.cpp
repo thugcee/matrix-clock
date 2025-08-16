@@ -32,7 +32,8 @@ void weatherUpdateTask(void* pvParameters) {
     Serial.println("Weather update task started.");
     for (;;) { // Infinite loop for the task
         Serial.println("[Task] Fetching new weather forecast...");
-        StringResult newForecast = getForecast();
+        int startHour = getGMTHour();
+        StringResult newForecast = getForecast(startHour);
         String newForecastStr;
         if (newForecast.isErr()) {
             Serial.println("[Task] Error fetching forecast: " + newForecast.unwrapErr());
@@ -54,10 +55,14 @@ void weatherUpdateTask(void* pvParameters) {
     }
 }
 
+portMUX_TYPE timeDataMux = portMUX_INITIALIZER_UNLOCKED;
 String timeData = "err time";
 void minuteChangeTask(void* pvParameters) {
     while (1) {
-        timeData = getFormattedLocalTime("%H : %M");
+        String tmp = getFormattedLocalTime("%H : %M");
+        taskENTER_CRITICAL(&timeDataMux);
+        timeData = tmp;
+        taskEXIT_CRITICAL(&timeDataMux);
         Serial.printf("Minute changed! New time: %s\n", getFormattedLocalTime().c_str());
         // Calculate time until next minute (in ms)
         struct tm timeinfo = getLocalTime();
