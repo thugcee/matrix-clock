@@ -3,6 +3,7 @@
 #include "reboot_control.h"
 #include "secrets.h"
 #include "time_utils.h"
+#include <Arduino.h>
 #include <MD_MAX72xx.h>
 #include <MD_Parola.h>
 #include <NTPClient.h>
@@ -136,15 +137,20 @@ void loop() {
             P.setTextAlignment(PA_LEFT);
             P.printf("%s", forecastData.c_str());
             xSemaphoreGive(forecastMutex);
-            vTaskDelay(pdMS_TO_TICKS(FORECAST_DISPLAY_TIME_SECONDS*1000));
+            displaySeconds(currentSecond);
+            vTaskDelay(pdMS_TO_TICKS(FORECAST_DISPLAY_TIME_SECONDS * 1000));
         }
     } else {
         P.setTextAlignment(PA_CENTER);
         P.printf("%s", timeData.c_str());
-        // Display the current second as a point on the last row
-        int column = map(currentSecond, 0, 59, 0, P.getGraphicObject()->getColumnCount() - 2);
-        P.getGraphicObject()->setPoint(ROW_SIZE - 1, column, false);
-        P.getGraphicObject()->setPoint(ROW_SIZE - 1, 1 + column, true);
+        displaySeconds(currentSecond);
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
+}
+
+void displaySeconds(int currentSecond) {
+    // Display the current second as a point on the last row
+    int column = map(currentSecond, 0, 59, 0, P.getGraphicObject()->getColumnCount() - 2);
+    P.getGraphicObject()->setPoint(ROW_SIZE - 1, column, false);
+    P.getGraphicObject()->setPoint(ROW_SIZE - 1, 1 + column, true);
 }
