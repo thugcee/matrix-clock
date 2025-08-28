@@ -3,7 +3,7 @@
 
 namespace net_utils {
 
-bool setupWiFi();
-void setupNTP(NTPClient& timeClient);
+bool setup_wifi();
+void setup_NTP(NTPClient& timeClient);
 
 } // namespace net_utils

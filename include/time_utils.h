@@ -1,9 +1,50 @@
 #pragma once
 #include <WString.h>
 
-int getGMTHour();
+/**
+ * @file time_utils.h
+ * @brief Utility functions for time management and formatting.
+ *
+ * All functions use only POSIX time functions (time, localtime_r, gmtime_r,
+ * strftime) for all operations.
+ */
 
-struct tm getLocalTime();
+ /**
+ * @brief Waits until the start of the next minute.
+ *
+ * This function calculates the time remaining until the next full minute
+ * and puts the calling task to sleep for that duration using FreeRTOS's
+ * vTaskDelay function.
+ */
+void wait_until_next_minute(void);
+
+/**
+ * @brief Returns the current second within the current minute.
+ *
+ * This function retrieves the second value (0-59) of the current minute
+ * from the system clock.
+ *
+ * @return int The current second (0-59) in the current minute.
+ */
+int get_current_second();
+
+/**
+ * @brief Returns the current hour in GMT timezone.
+ *
+ * This function retrieves the current hour (0-23) in GMT from the system clock.
+ *
+ * @return int The current hour in GMT (0-23).
+ */
+int get_GMT_hour();
+
+/**
+ * @brief Retrieves the current local time as a struct tm.
+ *
+ * This function gets the current system time and converts it to local time
+ * using the local timezone settings.
+ * @return struct tm representing the current local time.
+ */
+struct tm get_local_time();
 
 /**
  * @brief Returns the current local time as a formatted string.
@@ -15,7 +56,7 @@ struct tm getLocalTime();
  *
  * @return String containing the formatted local time.
  */
-String getFormattedLocalTime(const char* format = "%Y-%m-%d %H:%M:%S");
+String get_formatted_local_time(const char* format = "%Y-%m-%d %H:%M:%S");
 
 /**
  * @brief Formats a duration given in milliseconds into a human-readable string.
@@ -26,4 +67,4 @@ String getFormattedLocalTime(const char* format = "%Y-%m-%d %H:%M:%S");
  * @param rawMillis The duration in milliseconds to format.
  * @return A String representing the formatted time.
  */
-String formatMillis(unsigned long rawMillis);
+String format_millis(unsigned long rawMillis);

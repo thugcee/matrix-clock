@@ -1,18 +1,19 @@
 #include "apds9960.h"
 #include "config.h"
 #include "display_pages.h"
-#include "driver/i2c.h"
-#include "esp_heap_caps.h"
-#include "esp_log.h"
-#include "esp_system.h"
 #include "forecast.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "mem_mon.h"
 #include "net_utils.h"
 #include "reboot_control.h"
 #include "secrets.h"
 #include "time_utils.h"
+
+#include "driver/i2c.h"
+#include "esp_heap_caps.h"
+#include "esp_log.h"
+#include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include <Adafruit_APDS9960.h> // <- Changed include
 #include <Arduino.h>
@@ -25,8 +26,6 @@
 #include <sys/time.h>
 #include <time.h>
 
-void prepareMatrixDisplay(MD_Parola& display);
-
 volatile DisplayPage currentPage = DisplayPage::Time;
 
 WiFiUDP ntpUDP;
@@ -37,6 +36,10 @@ bool wifiEnabled = false;
 bool gestureProcessingEnabled = false;
 bool forecastEnabled = true;
 
+// Gesture Sensor
+Adafruit_APDS9960 apds;
+
+// LED Matrix Display
 MD_Parola parolaDisplay = MD_Parola(DISPLAY_HARDWARE_TYPE, DISPLAY_DATA_PIN, DISPLAY_CLK_PIN,
                                     DISPLAY_CS_PIN, DISPLAY_MAX_DEVICES);
 
@@ -44,10 +47,7 @@ String timeData = "Err time";
 String forecastData = "Loading";
 SemaphoreHandle_t displayDataSem;
 
-// ----- Gesture Sensor
-Adafruit_APDS9960 apds;
-
-void displayTime(String time, MD_Parola& parolaDisplay);
+static TaskHandle_t gestureTaskHandle = nullptr;
 
 /**
  * @brief FreeRTOS task that runs periodically to update the weather forecast.
@@ -57,8 +57,8 @@ void weatherUpdateTask(void* pvParameters) {
     Serial.println("Weather update task started.");
     for (;;) { // Infinite loop for the task
         Serial.println("[Task] Fetching new weather forecast...");
-        int startHour = getGMTHour();
-        StringResult newForecast = getForecast(startHour);
+        int startHour = get_GMT_hour();
+        StringResult newForecast = get_forecast(startHour);
         String newForecastStr;
         if (newForecast.isErr()) {
             Serial.println("[Task] Error fetching forecast: " + newForecast.unwrapErr());
@@ -80,28 +80,15 @@ void weatherUpdateTask(void* pvParameters) {
     }
 }
 
-void wait_until_next_minute(void) {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-
-    // Convert to milliseconds since epoch
-    int64_t ms_now = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
-
-    // Compute ms into current minute
-    int64_t ms_into_minute = ms_now % 60000;
-
-    // How many ms to next minute
-    int64_t ms_to_next_minute = 60000 - ms_into_minute;
-
-    // Convert ms to FreeRTOS ticks (round up to nearest tick)
-    TickType_t ticks = pdMS_TO_TICKS(ms_to_next_minute);
-
-    vTaskDelay(ticks);
+void displayTime(String time, MD_Parola& parolaDisplay) {
+    parolaDisplay.setTextAlignment(PA_CENTER);
+    parolaDisplay.printf("%s", time.c_str());
 }
 
 void minuteChangeTask(void* pvParameters) {
+    // Task that updates the time display every minute.
     while (1) {
-        String tmp = getFormattedLocalTime("%H : %M");
+        String tmp = get_formatted_local_time("%H : %M");
         if (xSemaphoreTake(displayDataSem, portMAX_DELAY) == pdTRUE) {
             timeData = tmp;
             currentPage = DisplayPage::Time; // Switch to time display on minute change
@@ -109,28 +96,21 @@ void minuteChangeTask(void* pvParameters) {
         }
         displayTime(timeData, parolaDisplay);
 
-        Serial.printf("Minute changed! New time: %s\n", getFormattedLocalTime().c_str());
+        Serial.printf("Minute changed! New time: %s\n", get_formatted_local_time().c_str());
         wait_until_next_minute();
     }
 }
 
-// Task that prints device uptime and local time periodically.
 void printStatusTask(void* parameter) {
+    // Task that prints device uptime and local time periodically.
     while (true) {
         unsigned long currentMillis = millis();
-        String uptime = formatMillis(currentMillis);
-        String localTime = getFormattedLocalTime();
+        String uptime = format_millis(currentMillis);
+        String localTime = get_formatted_local_time();
         Serial.println("⏱️  Device Uptime: " + uptime + " | Real time: " + localTime +
                        " | Forecast: " + forecastData);
         vTaskDelay(pdMS_TO_TICKS(STATUS_UPDATE_INTERVAL_SECONDS * 1000));
     }
-}
-
-void prepareMatrixDisplay(MD_Parola& display) {
-    display.begin();
-    display.displayClear();
-    display.setIntensity(DISPLAY_BRIGHTNESS);
-    display.setTextAlignment(PA_CENTER);
 }
 
 void initForecastUpdate() {
@@ -150,15 +130,15 @@ void initForecastUpdate() {
 
 void handleRebootStormDetection() {
     // Reboot storm detection mechanism.
-    RebootControl::rebootCount++;
-    if (RebootControl::rebootCount >= RebootControl::MAX_REBOOTS) {
+    reboot_control::reboot_count++;
+    if (reboot_control::reboot_count >= reboot_control::MAX_REBOOTS) {
         Serial.println("Reboot storm detected! Entering deep sleep for " +
-                       String(RebootControl::SLEEP_TIME_ON_STORM_US) + " ms");
-        esp_sleep_enable_timer_wakeup(RebootControl::SLEEP_TIME_ON_STORM_US);
+                       String(reboot_control::SLEEP_TIME_ON_STORM_US) + " ms");
+        esp_sleep_enable_timer_wakeup(reboot_control::SLEEP_TIME_ON_STORM_US);
         esp_deep_sleep_start();
     }
     // Monitor uptime to reset reboot counter after stable runtime.
-    xTaskCreate(RebootControl::resetRebootCounterTask, "ResetRebootCounter", 2048, NULL, 1, NULL);
+    xTaskCreate(reboot_control::reset_reboot_counter_task, "ResetRebootCounter", 2048, NULL, 1, NULL);
 }
 
 void initSerial() {
@@ -166,37 +146,6 @@ void initSerial() {
     while (!Serial) {
         delay(10);
     } // wait for Serial on some boards
-}
-
-void displaySeconds(int currentSecond) {
-    // Display the current second as a point on the last row
-    int column =
-        map(currentSecond, 0, 59, 0, parolaDisplay.getGraphicObject()->getColumnCount() - 2);
-    parolaDisplay.getGraphicObject()->setPoint(ROW_SIZE - 1, column, false);
-    parolaDisplay.getGraphicObject()->setPoint(ROW_SIZE - 1, 1 + column, true);
-}
-
-static TaskHandle_t gestureTaskHandle = nullptr;
-
-// --- Gesture Handler Function ---
-// This is also decoupled. It just handles the command logic.
-void handleGestureCommand(uint8_t gesture) {
-    switch (gesture) {
-    case APDS9960_UP:
-        Serial.println("GESTURE: UP");
-        break;
-    case APDS9960_DOWN:
-        Serial.println("GESTURE: DOWN");
-        break;
-    case APDS9960_LEFT:
-        Serial.println("GESTURE: LEFT");
-        break;
-    case APDS9960_RIGHT:
-        Serial.println("GESTURE: RIGHT");
-        break;
-    default:
-        break;
-    }
 }
 
 void processProximityInterruption(Adafruit_APDS9960* sensor) {
@@ -217,13 +166,6 @@ void IRAM_ATTR gpio_isr_handler(void* arg) {
         portYIELD_FROM_ISR();
 }
 
-int getCurrentSecond() {
-    int second;
-    struct tm currentTime = getLocalTime();
-    second = currentTime.tm_sec;
-    return second;
-}
-
 void gestureTask(void* pvParameters) {
     auto sensor = static_cast<Adafruit_APDS9960*>(pvParameters);
     for (;;) {
@@ -235,7 +177,7 @@ void gestureTask(void* pvParameters) {
         sensor->disableProximityInterrupt();
         vTaskDelay(pdMS_TO_TICKS(10));
 
-        int startSecond = getCurrentSecond();
+        int startSecond = get_current_second();
         processProximityInterruption(sensor);
 
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -244,10 +186,11 @@ void gestureTask(void* pvParameters) {
             vTaskDelay(pdMS_TO_TICKS(100));
         }
         Serial.println("Gesture task: proximity cleared.");
-        int endSecond = getCurrentSecond();
+        int endSecond = get_current_second();
         int elapsed = endSecond - startSecond;
         if (int left = FORECAST_DISPLAY_TIME_SECONDS - elapsed; left > 0) {
-            Serial.printf("Gesture task: waiting for %d seconds before returning to time display.\n", left);
+            Serial.printf(
+                "Gesture task: waiting for %d seconds before returning to time display.\n", left);
             vTaskDelay(pdMS_TO_TICKS(left * 1000));
         }
         if (xSemaphoreTake(displayDataSem, portMAX_DELAY) == pdTRUE) {
@@ -274,6 +217,13 @@ void screenUpdateTask(void* pvParameters) {
     }
 }
 
+void prepareMatrixDisplay(MD_Parola& display) {
+    display.begin();
+    display.displayClear();
+    display.setIntensity(DISPLAY_BRIGHTNESS);
+    display.setTextAlignment(PA_CENTER);
+}
+
 void setup() {
     initSerial();
 
@@ -288,9 +238,9 @@ void setup() {
     // Setup APDS9960 gesture sensor
     gestureProcessingEnabled = setupAPDS9960(apds, APDS_INT_PIN, gpio_isr_handler);
 
-    wifiEnabled = net_utils::setupWiFi();
+    wifiEnabled = net_utils::setup_wifi();
     if (wifiEnabled) {
-        net_utils::setupNTP(timeClient);
+        net_utils::setup_NTP(timeClient);
         initForecastUpdate();
     }
 
@@ -312,29 +262,19 @@ void setup() {
 #endif
 }
 
-void loop() {
+void displaySeconds(int currentSecond) {
+    // Display the current second as a point on the last row
+    int column =
+        map(currentSecond, 0, 59, 0, parolaDisplay.getGraphicObject()->getColumnCount() - 2);
+    parolaDisplay.getGraphicObject()->setPoint(ROW_SIZE - 1, column, false);
+    parolaDisplay.getGraphicObject()->setPoint(ROW_SIZE - 1, 1 + column, true);
+}
 
+void loop() {
     vTaskDelay(pdMS_TO_TICKS(1000));
 
-    // if (forecastEnabled && (currentPage == DisplayPage::Forecast ||
-    //                         currentSecond % FORECAST_UPDATE_INTERVAL_SECONDS == 3)) {
-    //     if (xSemaphoreTake(displayDataSem, portMAX_DELAY) == pdTRUE) {
-    //         parolaDisplay.setTextAlignment(PA_LEFT);
-    //         parolaDisplay.printf("%s", forecastData.c_str());
-    //         xSemaphoreGive(displayDataSem);
-    //         displaySeconds(currentSecond);
-    //         vTaskDelay(pdMS_TO_TICKS(FORECAST_DISPLAY_TIME_SECONDS * 1000));
-    //         currentPage = DisplayPage::Time;
-    //     }
-    // }
-
-    struct tm currentTime = getLocalTime();
+    struct tm currentTime = get_local_time();
     int currentSecond = currentTime.tm_sec;
     displaySeconds(currentSecond);
     vTaskDelay(pdMS_TO_TICKS(1000));
-}
-
-void displayTime(String time, MD_Parola& parolaDisplay) {
-    parolaDisplay.setTextAlignment(PA_CENTER);
-    parolaDisplay.printf("%s", time.c_str());
 }

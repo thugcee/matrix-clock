@@ -2,4 +2,4 @@
 #include "result.h"
 #include <WString.h>
 
-Result<String, String> getForecast(int startHour = 0);
+Result<String, String> get_forecast(int start_hour = 0);

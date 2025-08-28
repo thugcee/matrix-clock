@@ -15,7 +15,7 @@ namespace net_utils {
  *
  * @return true if WiFi is connected, false otherwise.
  */
-bool setupWiFi() {
+bool setup_wifi() {
     Serial.println("Connecting to WiFi...");
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     delay(2000); // Give some time for WiFi to connect
@@ -45,7 +45,7 @@ bool setupWiFi() {
  *
  * @param timeClient Reference to the NTPClient instance to be set up.
  */
-void setupNTP(NTPClient& timeClient) {
+void setup_NTP(NTPClient& timeClient) {
     timeClient.begin();
     timeClient.forceUpdate(); // Blocking call to sync time immediately
     Serial.printf("Synchronised UTC time: %s\n", timeClient.getFormattedTime().c_str());
@@ -62,7 +62,7 @@ void setupNTP(NTPClient& timeClient) {
     tzset();
 
     // Now localtime() will use timezone with DST
-    Serial.printf("Synchronised local time: %s\n", getFormattedLocalTime().c_str());
+    Serial.printf("Synchronised local time: %s\n", get_formatted_local_time().c_str());
 }
 
 } // namespace net_utils

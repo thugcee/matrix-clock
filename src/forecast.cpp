@@ -4,23 +4,23 @@
 #include <HTTPClient.h>
 #include <WString.h>
 
-StringResult getForecast(int startHour) {
+StringResult get_forecast(int start_hour) {
     if (WiFi.status() != WL_CONNECTED) {
         return StringResult::Err("Error: WiFi not connected.");
     }
 
     HTTPClient http;
-    String apiURL =
+    String api_url =
         "https://api.open-meteo.com/v1/"
         "forecast?latitude=53.4289&longitude=14.553&hourly=temperature_2m&forecast_days=2";
 
     // Start the HTTP request
-    http.begin(apiURL);
-    int httpCode = http.GET();
+    http.begin(api_url);
+    int http_code = http.GET();
 
     // --- HTTP Response Handling ---
-    if (httpCode > 0) {
-        if (httpCode == HTTP_CODE_OK) {
+    if (http_code > 0) {
+        if (http_code == HTTP_CODE_OK) {
             String payload = http.getString();
 
             // --- JSON Parsing and Data Processing (for ArduinoJson v7.x) ---
@@ -43,39 +43,39 @@ StringResult getForecast(int startHour) {
 
             JsonArray temps = doc["hourly"]["temperature_2m"].as<JsonArray>();
 
-            if (temps.isNull() || temps.size() <= startHour + FORECAST_HOURS) {
+            if (temps.isNull() || temps.size() <= start_hour + FORECAST_HOURS) {
                 http.end();
                 return StringResult::Err("Error: Not enough forecast data available.");
             }
 
             // Find min and max temperature in the next FORECAST_HOURS hours
-            float minTemp = temps[0].as<float>();
-            float maxTemp = temps[0].as<float>();
+            float min_temp = temps[0].as<float>();
+            float max_temp = temps[0].as<float>();
 
-            for (int i = startHour; i < temps.size() && i < startHour + FORECAST_HOURS; i++) {
-                float currentTemp = temps[i].as<float>();
-                Serial.printf("Hour %02d: Temp = %.2f\n", i >= 24 ? i - 24 : i, currentTemp);
-                if (currentTemp < minTemp) {
-                    minTemp = currentTemp;
+            for (int i = start_hour; i < temps.size() && i < start_hour + FORECAST_HOURS; i++) {
+                float current_temp = temps[i].as<float>();
+                Serial.printf("Hour %02d: Temp = %.2f\n", i >= 24 ? i - 24 : i, current_temp);
+                if (current_temp < min_temp) {
+                    min_temp = current_temp;
                 }
-                if (currentTemp > maxTemp) {
-                    maxTemp = currentTemp;
+                if (current_temp > max_temp) {
+                    max_temp = current_temp;
                 }
             }
 
             http.end(); // Free resources
-            return StringResult::Ok(String((int)round(minTemp)) + "-" + String((int)round(maxTemp)) + "°");
+            return StringResult::Ok(String((int)round(min_temp)) + "-" + String((int)round(max_temp)) + "°");
 
         } else {
             http.end();
             // Provide a more descriptive HTTP error message
-            return StringResult::Err("Error: HTTP request failed, code: " + String(httpCode));
+            return StringResult::Err("Error: HTTP request failed, code: " + String(http_code));
         }
     } else {
         http.end();
         // Provide a more descriptive client-side error
         return StringResult::Err("Error: HTTP GET request failed, error: " +
-                                 String(http.errorToString(httpCode).c_str()));
+                                 String(http.errorToString(http_code).c_str()));
     }
     if (WiFi.status() != WL_CONNECTED) {
         return StringResult::Err("Error: WiFi not connected.");
