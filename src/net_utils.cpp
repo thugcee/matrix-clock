@@ -1,3 +1,4 @@
+#include "config.h"
 #include "secrets.h"
 #include "time_utils.h"
 #include <NTPClient.h>

@@ -1,3 +1,4 @@
+#include "config.h"
 #include "result.h"
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
