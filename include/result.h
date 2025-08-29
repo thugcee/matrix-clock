@@ -27,5 +27,3 @@ template <typename T, typename E> class Result {
     Result(std::optional<T> value, std::optional<E> error)
         : value_(std::move(value)), error_(std::move(error)) {}
 };
-
-using StringResult = Result<String, String>;

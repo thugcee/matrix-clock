@@ -26,26 +26,26 @@
 #include <sys/time.h>
 #include <time.h>
 
-volatile DisplayPage currentPage = DisplayPage::Time;
+volatile DisplayPage current_page = DisplayPage::Time;
 
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", 0,
+WiFiUDP net_UDP;
+NTPClient timeClient(net_UDP, "pool.ntp.org", 0,
                      60 * 60 * 1000); // UTC offset (0), update interval 1h
 
-bool wifiEnabled = false;
-bool gestureProcessingEnabled = false;
-bool forecastEnabled = true;
+bool wifi_enabled = false;
+bool gestures_enabled = false;
+bool forecast_enabled = true;
 
 // Gesture Sensor
 Adafruit_APDS9960 apds;
 
 // LED Matrix Display
-MD_Parola parolaDisplay = MD_Parola(DISPLAY_HARDWARE_TYPE, DISPLAY_DATA_PIN, DISPLAY_CLK_PIN,
-                                    DISPLAY_CS_PIN, DISPLAY_MAX_DEVICES);
+MD_Parola parola_display = MD_Parola(DISPLAY_HARDWARE_TYPE, DISPLAY_DATA_PIN, DISPLAY_CLK_PIN,
+                                     DISPLAY_CS_PIN, DISPLAY_MAX_DEVICES);
 
-String timeData = "Err time";
-String forecastData = "Loading";
-SemaphoreHandle_t displayDataSem;
+String time_data = "Err time";
+ForecastData16 forecast_data{};
+SemaphoreHandle_t display_data_sem;
 
 static TaskHandle_t gestureTaskHandle = nullptr;
 
@@ -58,20 +58,15 @@ void weatherUpdateTask(void* pvParameters) {
     for (;;) { // Infinite loop for the task
         Serial.println("[Task] Fetching new weather forecast...");
         int startHour = get_GMT_hour();
-        StringResult newForecast = get_forecast(startHour);
-        String newForecastStr;
-        if (newForecast.isErr()) {
-            Serial.println("[Task] Error fetching forecast: " + newForecast.unwrapErr());
-            newForecastStr = "Error";
-        } else {
+        if (ForecastResult newForecast = get_forecast<FORECAST_HOURS>(startHour); newForecast) {
+            if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
+                forecast_data = std::move(newForecast.unwrap());
+                xSemaphoreGive(display_data_sem);
+                Serial.println("[Task] Forecast updated successfully.");
+            }
             Serial.println("[Task] Successfully fetched forecast.");
-            newForecastStr = newForecast.unwrap();
-        }
-
-        if (xSemaphoreTake(displayDataSem, portMAX_DELAY) == pdTRUE) {
-            forecastData = newForecastStr;
-            xSemaphoreGive(displayDataSem);
-            Serial.println("[Task] Forecast updated successfully.");
+        } else {
+            Serial.println("[Task] Error fetching forecast: " + newForecast.unwrapErr());
         }
 
         // Wait for one hour before the next run
@@ -80,7 +75,7 @@ void weatherUpdateTask(void* pvParameters) {
     }
 }
 
-void displayTime(String time, MD_Parola& parolaDisplay) {
+void display_time(String time, MD_Parola& parolaDisplay) {
     parolaDisplay.setTextAlignment(PA_CENTER);
     parolaDisplay.printf("%s", time.c_str());
 }
@@ -89,12 +84,14 @@ void minuteChangeTask(void* pvParameters) {
     // Task that updates the time display every minute.
     while (1) {
         String tmp = get_formatted_local_time("%H : %M");
-        if (xSemaphoreTake(displayDataSem, portMAX_DELAY) == pdTRUE) {
-            timeData = tmp;
-            currentPage = DisplayPage::Time; // Switch to time display on minute change
-            xSemaphoreGive(displayDataSem);
+        if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
+            if (current_page == DisplayPage::Time) {
+                time_data = tmp;
+                current_page = DisplayPage::Time; // Switch to time display on minute change
+                display_time(time_data, parola_display);
+            }
+            xSemaphoreGive(display_data_sem);
         }
-        displayTime(timeData, parolaDisplay);
 
         Serial.printf("Minute changed! New time: %s\n", get_formatted_local_time().c_str());
         wait_until_next_minute();
@@ -103,25 +100,27 @@ void minuteChangeTask(void* pvParameters) {
 
 void printStatusTask(void* parameter) {
     // Task that prints device uptime and local time periodically.
+    char forecast_buf[12];
     while (true) {
         unsigned long currentMillis = millis();
         String uptime = format_millis(currentMillis);
         String localTime = get_formatted_local_time();
+        format_temp_range(forecast_buf, sizeof(forecast_buf), forecast_data.min_temp,
+                          forecast_data.max_temp);
         Serial.println("⏱️  Device Uptime: " + uptime + " | Real time: " + localTime +
-                       " | Forecast: " + forecastData);
+                       " | Forecast: " + forecast_buf);
         vTaskDelay(pdMS_TO_TICKS(STATUS_UPDATE_INTERVAL_SECONDS * 1000));
     }
 }
 
 void initForecastUpdate() {
     // Initialize the weather forecast task
-    displayDataSem = xSemaphoreCreateMutex();
-    if (displayDataSem == NULL) {
+    display_data_sem = xSemaphoreCreateMutex();
+    if (display_data_sem == NULL) {
         Serial.println("Error: Failed to create mutex.");
-        forecastData = "Er:Mutex";
-        forecastEnabled = false; // Disable forecast updates
+        forecast_enabled = false; // Disable forecast updates
     }
-    if (wifiEnabled && forecastEnabled) {
+    if (wifi_enabled && forecast_enabled) {
         xTaskCreate(weatherUpdateTask, "WeatherUpdate", 8192, nullptr, 1, nullptr);
     } else {
         Serial.println("Weather updates are disabled.");
@@ -138,7 +137,8 @@ void handleRebootStormDetection() {
         esp_deep_sleep_start();
     }
     // Monitor uptime to reset reboot counter after stable runtime.
-    xTaskCreate(reboot_control::reset_reboot_counter_task, "ResetRebootCounter", 2048, NULL, 1, NULL);
+    xTaskCreate(reboot_control::reset_reboot_counter_task, "ResetRebootCounter", 2048, NULL, 1,
+                NULL);
 }
 
 void initSerial() {
@@ -151,11 +151,14 @@ void initSerial() {
 void processProximityInterruption(Adafruit_APDS9960* sensor) {
     uint8_t proximity = sensor->readProximity();
     Serial.printf("Gesture hander: Proximity value: %d\n", proximity);
-    if (xSemaphoreTake(displayDataSem, portMAX_DELAY) == pdTRUE) {
-        currentPage = DisplayPage::Forecast;
-        parolaDisplay.setTextAlignment(PA_LEFT);
-        parolaDisplay.printf("%s", forecastData.c_str());
-        xSemaphoreGive(displayDataSem);
+    if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
+        current_page = DisplayPage::Forecast;
+        parola_display.setTextAlignment(PA_LEFT);
+        char forecast_buf[12];
+        format_temp_range(forecast_buf, sizeof(forecast_buf), forecast_data.min_temp,
+                          forecast_data.max_temp);
+        xSemaphoreGive(display_data_sem);
+        parola_display.printf("%s", forecast_buf);
     }
 }
 
@@ -173,38 +176,64 @@ void gestureTask(void* pvParameters) {
         Serial.println("Gesture Task: waiting for notification...");
         // Block until notified by ISR. Use ulTaskNotifyTake or semaphore take.
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY); // clear on exit
+
         Serial.println("Gesture Task: notification detected, processing...");
         sensor->disableProximityInterrupt();
+        if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
+            current_page = DisplayPage::Forecast;
+            xSemaphoreGive(display_data_sem);
+        }
         vTaskDelay(pdMS_TO_TICKS(10));
 
-        int startSecond = get_current_second();
         processProximityInterruption(sensor);
-
         vTaskDelay(pdMS_TO_TICKS(10));
+
+        unsigned long start_second = get_uptime_seconds();
         Serial.println("Gesture task: waiting for proximity leave...");
+        bool chart_already_shown = false;
         while (sensor->readProximity() > 0) {
             vTaskDelay(pdMS_TO_TICKS(100));
+            unsigned long current_second = get_uptime_seconds();
+            if (current_second - start_second >= FORECAST_CHART_WAIT && !chart_already_shown) {
+                if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
+                    display_forecast_chart();
+                    xSemaphoreGive(display_data_sem);
+                }
+                chart_already_shown = true;
+            }
         }
         Serial.println("Gesture task: proximity cleared.");
-        int endSecond = get_current_second();
-        int elapsed = endSecond - startSecond;
-        if (int left = FORECAST_DISPLAY_TIME_SECONDS - elapsed; left > 0) {
+        unsigned long end_second = get_uptime_seconds();
+        unsigned long elapsed = end_second - start_second;
+        if (long left = FORECAST_DISPLAY_TIME_SECONDS - elapsed; left > 0) {
             Serial.printf(
-                "Gesture task: waiting for %d seconds before returning to time display.\n", left);
+                "Gesture task: waiting for %ld seconds before returning to time display.\n", left);
             vTaskDelay(pdMS_TO_TICKS(left * 1000));
         }
-        if (xSemaphoreTake(displayDataSem, portMAX_DELAY) == pdTRUE) {
-            currentPage = DisplayPage::Time;
-            displayTime(timeData, parolaDisplay);
-            xSemaphoreGive(displayDataSem);
+        if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
+            current_page = DisplayPage::Time;
+            display_time(time_data, parola_display);
+            xSemaphoreGive(display_data_sem);
         }
         sensor->clearInterrupt();
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
 
+void display_forecast_chart() {
+    parola_display.displayClear();
+    parola_display.setTextAlignment(PA_LEFT);
+    parola_display.printf("%d:", int(round(forecast_data.hourly_temps[0])));
+    auto columns_bits = forecast_to_columns<FORECAST_HOURS>(forecast_data);
+    for (int i = 0; i < 16 && i < FORECAST_HOURS && i < MATRIX_WIDTH; i++) {
+        parola_display.getGraphicObject()->setColumn(FORECAST_HOURS - 1 - i,
+                                                     reverse_bits_compact(columns_bits[i]));
+        Serial.printf("Col %2d: 0x%02X\n", i, columns_bits[i]);
+    }
+}
+
 void ntpUpdateTask(void* pvParameters) {
-    while (wifiEnabled) {
+    while (wifi_enabled) {
         vTaskDelay(pdMS_TO_TICKS(60 * 60 * 1000)); // sync with NTP servers once an hour
         timeClient.update();                       // Non-blocking sync
     }
@@ -236,10 +265,10 @@ void setup() {
     Serial.println("I2C initialized.");
 
     // Setup APDS9960 gesture sensor
-    gestureProcessingEnabled = setupAPDS9960(apds, APDS_INT_PIN, gpio_isr_handler);
+    gestures_enabled = setupAPDS9960(apds, APDS_INT_PIN, gpio_isr_handler);
 
-    wifiEnabled = net_utils::setup_wifi();
-    if (wifiEnabled) {
+    wifi_enabled = net_utils::setup_wifi();
+    if (wifi_enabled) {
         net_utils::setup_NTP(timeClient);
         initForecastUpdate();
     }
@@ -248,13 +277,13 @@ void setup() {
     btStop(); // disables Bluetooth
     setCpuFrequencyMhz(80);
 
-    prepareMatrixDisplay(parolaDisplay);
+    prepareMatrixDisplay(parola_display);
 
     xTaskCreate(ntpUpdateTask, "Sync Time", 2048, nullptr, tskIDLE_PRIORITY, nullptr);
     xTaskCreate(minuteChangeTask, "Minute Change", 4096, nullptr, 1, nullptr);
     xTaskCreate(printStatusTask, "Print Status", 4096, nullptr, tskIDLE_PRIORITY, nullptr);
     xTaskCreate(screenUpdateTask, "Print Status", 4096, nullptr, tskIDLE_PRIORITY, nullptr);
-    if (gestureProcessingEnabled)
+    if (gestures_enabled)
         xTaskCreate(gestureTask, "gestureTask", 4096, &apds, 5, &gestureTaskHandle);
 #ifdef DEBUG_MEM
     xTaskCreatePinnedToCore(heap_monitor_task, "heapMon", 4096, nullptr, tskIDLE_PRIORITY + 1,
@@ -262,12 +291,16 @@ void setup() {
 #endif
 }
 
-void displaySeconds(int currentSecond) {
+void display_seconds(int current_second) {
     // Display the current second as a point on the last row
-    int column =
-        map(currentSecond, 0, 59, 0, parolaDisplay.getGraphicObject()->getColumnCount() - 2);
-    parolaDisplay.getGraphicObject()->setPoint(ROW_SIZE - 1, column, false);
-    parolaDisplay.getGraphicObject()->setPoint(ROW_SIZE - 1, 1 + column, true);
+    static int last_column = current_second;
+    int max_columns = parola_display.getGraphicObject()->getColumnCount();
+    int current_second_column = max_columns - 1 - map(current_second, 0, 59, 0, max_columns - 1);
+    if (current_second_column != last_column) {
+        parola_display.getGraphicObject()->setPoint(ROW_SIZE - 1, current_second_column, true);
+        parola_display.getGraphicObject()->setPoint(ROW_SIZE - 1, last_column, false);
+        last_column = current_second_column;
+    }
 }
 
 void loop() {
@@ -275,6 +308,7 @@ void loop() {
 
     struct tm currentTime = get_local_time();
     int currentSecond = currentTime.tm_sec;
-    displaySeconds(currentSecond);
+    if (current_page == DisplayPage::Time)
+        display_seconds(currentSecond);
     vTaskDelay(pdMS_TO_TICKS(1000));
 }

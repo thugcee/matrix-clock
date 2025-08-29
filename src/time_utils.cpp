@@ -4,6 +4,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_system.h"
 
 void wait_until_next_minute(void) {
     struct timeval tv;
@@ -24,6 +25,16 @@ void wait_until_next_minute(void) {
     vTaskDelay(ticks);
 }
 
+unsigned long get_uptime_seconds() {
+    return esp_timer_get_time() / 1000000UL;
+}
+
+int64_t get_current_epoch_second() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (int64_t)tv.tv_sec;
+}
+
 struct tm get_local_time() {
     time_t now = time(nullptr);
     struct tm timeinfo;
@@ -31,7 +42,7 @@ struct tm get_local_time() {
     return timeinfo;
 }
 
-int get_current_second() {
+int get_current_second_in_minute() {
     int second;
     struct tm currentTime = get_local_time();
     second = currentTime.tm_sec;

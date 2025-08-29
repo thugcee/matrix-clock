@@ -43,14 +43,14 @@ bool setup_wifi() {
  * This function initializes the NTP client with the specified server and updates the local
  * system time. It also sets the timezone based on the TIMEZONE macro defined in secrets.h.
  *
- * @param timeClient Reference to the NTPClient instance to be set up.
+ * @param time_client Reference to the NTPClient instance to be set up.
  */
-void setup_NTP(NTPClient& timeClient) {
-    timeClient.begin();
-    timeClient.forceUpdate(); // Blocking call to sync time immediately
-    Serial.printf("Synchronised UTC time: %s\n", timeClient.getFormattedTime().c_str());
+void setup_NTP(NTPClient& time_client) {
+    time_client.begin();
+    time_client.forceUpdate(); // Blocking call to sync time immediately
+    Serial.printf("Synchronised UTC time: %s\n", time_client.getFormattedTime().c_str());
 
-    time_t utc = timeClient.getEpochTime();
+    time_t utc = time_client.getEpochTime();
 
     // Set ESP32 system time (RTC)
     struct timeval tv;

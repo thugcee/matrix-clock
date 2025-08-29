@@ -9,6 +9,24 @@
  * strftime) for all operations.
  */
 
+/**
+ * @brief Returns the current time as epoch seconds.
+ * 
+ * This function retrieves the current time from the system and returns it
+ * as the number of seconds since the Unix epoch (January 1, 1970).
+ * @return int64_t The current time in epoch seconds.
+ */
+int64_t get_current_epoch_second();
+
+/**
+ * @brief Returns the system uptime in seconds.
+ *
+ * This function retrieves the system uptime since boot and returns it
+ * as the number of seconds.
+ * @return unsigned long The system uptime in seconds.
+ */
+unsigned long get_uptime_seconds();
+
  /**
  * @brief Waits until the start of the next minute.
  *
@@ -26,7 +44,7 @@ void wait_until_next_minute(void);
  *
  * @return int The current second (0-59) in the current minute.
  */
-int get_current_second();
+int get_current_second_in_minute();
 
 /**
  * @brief Returns the current hour in GMT timezone.

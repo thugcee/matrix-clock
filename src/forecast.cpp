@@ -1,12 +1,104 @@
+#include "forecast.h"
 #include "config.h"
-#include "result.h"
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <WString.h>
 
-StringResult get_forecast(int start_hour) {
+unsigned char reverse_bits_compact(unsigned char b) {
+    b = (b & 0xF0) >> 4 | (b & 0x0F) << 4; // Swap nibbles
+    b = (b & 0xCC) >> 2 | (b & 0x33) << 2; // Swap pairs
+    b = (b & 0xAA) >> 1 | (b & 0x55) << 1; // Swap bits
+    return b;
+}
+
+template <size_t STORED_HOURS>
+std::array<uint8_t, STORED_HOURS> forecast_to_columns(const ForecastData<STORED_HOURS>& f) {
+    std::array<uint8_t, STORED_HOURS> cols{};
+    cols.fill(0);
+
+    // Determine min/max range to use: prefer provided min_temp/max_temp if valid (min < max)
+    float min_temp = f.min_temp;
+    float max_temp = f.max_temp;
+    if (!(min_temp < max_temp)) {
+        // compute from all samples
+        min_temp = f.hourly_temps[0];
+        max_temp = f.hourly_temps[0];
+        for (size_t i = 1; i < STORED_HOURS; ++i) {
+            if (f.hourly_temps[i] < min_temp)
+                min_temp = f.hourly_temps[i];
+            if (f.hourly_temps[i] > max_temp)
+                max_temp = f.hourly_temps[i];
+        }
+        if (min_temp == max_temp) { // flat line: make a tiny range
+            min_temp -= 0.5f;
+            max_temp += 0.5f;
+        }
+    }
+
+    const float range = max_temp - min_temp;
+    const float inv_range = (range > 0.0f) ? (1.0f / range) : 0.0f;
+    const float scale = (MATRIX_HEIGHT - 1) * inv_range; // maps delta to row index span 0..7
+
+    for (size_t i = 0; i < STORED_HOURS; ++i) {
+        float t = f.hourly_temps[i];
+        // clamp
+        if (t < min_temp)
+            t = min_temp;
+        else if (t > max_temp)
+            t = max_temp;
+        // normalized position 0..(MATRIX_HEIGHT-1)
+        float pos = (t - min_temp) * scale;
+        int row = static_cast<int>(std::lround(pos));
+        if (row < 0)
+            row = 0;
+        else if (row >= static_cast<int>(MATRIX_HEIGHT))
+            row = MATRIX_HEIGHT - 1;
+
+        // bits 0..row set: (1u << (row+1)) - 1  (row in [0..7])
+        uint8_t bits = static_cast<uint8_t>((1u << (row + 1)) - 1u);
+        cols[i] = bits;
+    }
+
+    // remaining columns stay zero
+    return cols;
+}
+template std::array<uint8_t, FORECAST_HOURS>
+forecast_to_columns<FORECAST_HOURS>(const ForecastData<FORECAST_HOURS>& f);
+
+template <uint8_t STORED_HOURS>
+void format_temp_at_hour(char* buf, size_t bufsize, ForecastData<STORED_HOURS>& data, int hour) {
+    if (!buf || bufsize == 0)
+        return;
+    int index = hour - data.start_hour;
+    if (index < 0)
+        index = 0;
+    if (index >= STORED_HOURS)
+        index = STORED_HOURS - 1;
+
+    int temp_i = (int)roundf(data.hourly_temps[index]);
+    snprintf(buf, bufsize, "%02d:%d", hour, temp_i);
+}
+template void format_temp_at_hour<FORECAST_HOURS>(char* buf, size_t bufsize,
+                                                  ForecastData<FORECAST_HOURS>& data, int hour);
+
+void format_temp_range(char* buf, size_t bufsize, float min, float max) {
+    if (!buf || bufsize == 0)
+        return;
+    int min_i = (int)round(min);
+    int max_i = (int)round(max);
+    snprintf(buf, bufsize, "%d-%d", min_i, max_i);
+}
+
+template <uint8_t STORED_HOURS>
+typename ForecastData<STORED_HOURS>::result_t get_forecast(int start_hour) {
+    using ForecastResult = typename ForecastData<STORED_HOURS>::result_t;
+
     if (WiFi.status() != WL_CONNECTED) {
-        return StringResult::Err("Error: WiFi not connected.");
+        return ForecastResult::Err("Error: WiFi not connected.");
+    }
+
+    if (start_hour + STORED_HOURS > 48) {
+        return ForecastResult::Err("Error: Requested hours exceed available forecast range.");
     }
 
     HTTPClient http;
@@ -30,54 +122,57 @@ StringResult get_forecast(int start_hour) {
             if (error) {
                 http.end();
                 // Return a more specific JSON error
-                return StringResult::Err("Error: JSON deserialization failed: " +
-                                         String(error.c_str()));
+                return ForecastResult::Err("Error: JSON deserialization failed: " +
+                                           String(error.c_str()));
             }
 
             // Check if the expected data is present
             if (!doc["hourly"].is<JsonObject>() ||
                 !doc["hourly"]["temperature_2m"].is<JsonArray>()) {
                 http.end();
-                return StringResult::Err("Error: Invalid JSON format from API.");
+                return ForecastResult::Err("Error: Invalid JSON format from API.");
             }
 
             JsonArray temps = doc["hourly"]["temperature_2m"].as<JsonArray>();
 
-            if (temps.isNull() || temps.size() <= start_hour + FORECAST_HOURS) {
+            if (temps.isNull() || temps.size() <= start_hour + STORED_HOURS) {
                 http.end();
-                return StringResult::Err("Error: Not enough forecast data available.");
+                return ForecastResult::Err("Error: Not enough forecast data available.");
             }
 
-            // Find min and max temperature in the next FORECAST_HOURS hours
-            float min_temp = temps[0].as<float>();
-            float max_temp = temps[0].as<float>();
-
+            ForecastData<STORED_HOURS> forecast_data;
+            forecast_data.start_hour = start_hour;
+            forecast_data.min_temp = temps[start_hour].as<float>();
+            forecast_data.max_temp = temps[start_hour].as<float>();
             for (int i = start_hour; i < temps.size() && i < start_hour + FORECAST_HOURS; i++) {
                 float current_temp = temps[i].as<float>();
                 Serial.printf("Hour %02d: Temp = %.2f\n", i >= 24 ? i - 24 : i, current_temp);
-                if (current_temp < min_temp) {
-                    min_temp = current_temp;
+                if (current_temp < forecast_data.min_temp) {
+                    forecast_data.min_temp = current_temp;
                 }
-                if (current_temp > max_temp) {
-                    max_temp = current_temp;
+                if (current_temp > forecast_data.max_temp) {
+                    forecast_data.max_temp = current_temp;
                 }
+                forecast_data.hourly_temps[i - start_hour] = current_temp;
             }
 
             http.end(); // Free resources
-            return StringResult::Ok(String((int)round(min_temp)) + "-" + String((int)round(max_temp)) + "°");
+            return ForecastResult::Ok(forecast_data);
 
         } else {
             http.end();
             // Provide a more descriptive HTTP error message
-            return StringResult::Err("Error: HTTP request failed, code: " + String(http_code));
+            return ForecastResult::Err("Error: HTTP request failed, code: " + String(http_code));
         }
     } else {
         http.end();
         // Provide a more descriptive client-side error
-        return StringResult::Err("Error: HTTP GET request failed, error: " +
-                                 String(http.errorToString(http_code).c_str()));
+        return ForecastResult::Err("Error: HTTP GET request failed, error: " +
+                                   String(http.errorToString(http_code).c_str()));
     }
     if (WiFi.status() != WL_CONNECTED) {
-        return StringResult::Err("Error: WiFi not connected.");
+        return ForecastResult::Err("Error: WiFi not connected.");
     }
 }
+
+template typename ForecastData<FORECAST_HOURS>::result_t get_forecast<FORECAST_HOURS>(int);
