@@ -1,4 +1,4 @@
-# Firmware for a digital clock based on ESP32 and MAX7219 display, with time synchronization via NTP
+# Firmware for a digital clock based on ESP32 and MAX7219 display, with time synchronization via NTP and a simple weather forecast.
 
 This is a PlatformIO project that utilises the Arduino and ESP-IDF frameworks.
 
