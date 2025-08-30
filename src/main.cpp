@@ -29,8 +29,7 @@
 volatile DisplayPage current_page = DisplayPage::Time;
 
 WiFiUDP net_UDP;
-NTPClient timeClient(net_UDP, "pool.ntp.org", 0,
-                     60 * 60 * 1000); // UTC offset (0), update interval 1h
+NTPClient timeClient(net_UDP, NTP_SERVER, 0, NTP_UPDATE_INTERVAL_MS); // UTC offset (0)
 
 bool wifi_enabled = false;
 bool gestures_enabled = false;
