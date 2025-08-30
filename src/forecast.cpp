@@ -102,12 +102,9 @@ typename ForecastData<STORED_HOURS>::result_t get_forecast(int start_hour) {
     }
 
     HTTPClient http;
-    String api_url =
-        "https://api.open-meteo.com/v1/"
-        "forecast?latitude=53.4289&longitude=14.553&hourly=temperature_2m&forecast_days=2";
-
+    
     // Start the HTTP request
-    http.begin(api_url);
+    http.begin(String(FORECAST_API_URL));
     int http_code = http.GET();
 
     // --- HTTP Response Handling ---

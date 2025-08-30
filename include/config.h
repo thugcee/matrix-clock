@@ -1,10 +1,10 @@
 #pragma once
 
 #include "driver/i2c.h"
-#include <cstdint>
-#include <chrono>
-#include <string_view>
 #include <MD_Parola.h>
+#include <chrono>
+#include <cstdint>
+#include <string_view>
 
 // GPIO pin for built-in LED
 constexpr int CONFIG_BLINK_GPIO = 2;
@@ -16,6 +16,9 @@ constexpr char TIMEZONE[] = "CET-1CEST,M3.5.0/2,M10.5.0/3";
 constexpr int STATUS_UPDATE_INTERVAL_SECONDS{5};
 constexpr int FORECAST_DISPLAY_TIME_SECONDS{3};
 constexpr int FORECAST_CHART_WAIT{3};
+constexpr char FORECAST_API_URL[] =
+    "https://api.open-meteo.com/v1/forecast?"
+    "latitude=52.5200&longitude=13.4049&hourly=temperature_2m&forecast_days=2";
 
 // Display hardware/type (enum-like). Replace with the actual enum type.
 constexpr MD_MAX72XX::moduleType_t DISPLAY_HARDWARE_TYPE = MD_MAX72XX::FC16_HW;
@@ -40,5 +43,5 @@ constexpr gpio_num_t I2C_SCL = GPIO_NUM_22;
 constexpr uint32_t I2C_FREQ_HZ = 100000; // 100 kHz
 constexpr gpio_num_t APDS_INT_PIN = GPIO_NUM_4;
 
-static_assert( FORECAST_HOURS <= MATRIX_WIDTH,
-               "FORECAST_HOURS must be less than or equal to MATRIX_WIDTH" );
+static_assert(FORECAST_HOURS <= MATRIX_WIDTH,
+              "FORECAST_HOURS must be less than or equal to MATRIX_WIDTH");
