@@ -26,8 +26,10 @@ Edit `include/config.h` to configure options, especially location for weather fo
 
 ## Todo
 
-- Add nicer fonts.
-- Add WiFi provisioning with BT app.
-- Add support for real gestures, not just proximity.
+- Nicer fonts.
+- WiFi provisioning with BT app.
+- OTA firmware update.
+- MQTT interface.
+- Support for real gestures, not just proximity.
 - Remove the Arduino loop and rely on FreeRTOS tasks only (almost done).
 - Remove dependency on Arduino framework.
