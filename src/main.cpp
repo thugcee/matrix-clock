@@ -204,7 +204,10 @@ void gestureTask(void* pvParameters) {
         Serial.println("Gesture task: proximity cleared.");
         unsigned long end_second = get_uptime_seconds();
         unsigned long elapsed = end_second - start_second;
-        if (long left = FORECAST_DISPLAY_TIME_SECONDS - elapsed; left > 0) {
+        if (long left = FORECAST_DISPLAY_TIME_SECONDS - elapsed + chart_already_shown
+                            ? FORECAST_ADDITIONAL_CHART_DISPLAY_TIME_SECONDS
+                            : 0;
+            left > 0) {
             Serial.printf(
                 "Gesture task: waiting for %ld seconds before returning to time display.\n", left);
             vTaskDelay(pdMS_TO_TICKS(left * 1000));
