@@ -101,6 +101,35 @@ static void publish_state(size_t idx) {
     }
 }
 
+// Build discovery topic: homeassistant/switch/<device>_lightN/config
+static void build_discovery_topic(char *buf, size_t buf_sz, size_t idx) {
+    std::snprintf(buf, buf_sz, "homeassistant/switch/%s_light%u/config", DEVICE_NAME, unsigned(idx + 1));
+}
+
+// Build discovery payload (retained) — minimal fields
+static void publish_discovery(size_t idx) {
+    if (!mqtt_client) return;
+    char topic[128];
+    build_discovery_topic(topic, sizeof(topic), idx);
+
+    // state and command topics
+    char state_topic[64], cmd_topic[64];
+    build_topic(state_topic, sizeof(state_topic), "state", idx);
+    build_topic(cmd_topic, sizeof(cmd_topic), "command", idx);
+
+    // Unique ID and JSON payload
+    char payload[512];
+    std::snprintf(payload, sizeof(payload),
+                  "{\"name\":\"%s light%u\",\"uniq_id\":\"%s_light%u\",\"cmd_t\":\"%s\",\"stat_t\":\"%s\",\"qos\":0,\"pl_on\":\"ON\",\"pl_off\":\"OFF\",\"~\":\"\"}",
+                  DEVICE_NAME, unsigned(idx + 1),
+                  DEVICE_NAME, unsigned(idx + 1),
+                  cmd_topic, state_topic);
+
+    // Publish retained so Home Assistant can discover after restart
+    int msg_id = esp_mqtt_client_publish(mqtt_client, topic, payload, 0, 0, 1);
+    ESP_LOGI(TAG, "Published discovery %s (msg_id=%d)", topic, msg_id);
+}
+
 // Apply logical state to GPIO and persist & publish
 static void apply_state(size_t idx, bool on) {
     if (idx >= RELAY_COUNT) return;
@@ -117,59 +146,63 @@ static void apply_state(size_t idx, bool on) {
 // MQTT event handler
 static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
     switch (event->event_id) {
-        case MQTT_EVENT_CONNECTED:
-            ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-            // subscribe to all command topics for relays
-            for (size_t i = 0; i < RELAY_COUNT; ++i) {
-                char topic[64];
-                build_topic(topic, sizeof(topic), "command", i);
-                int msg_id = esp_mqtt_client_subscribe(mqtt_client, topic, 0);
-                ESP_LOGI(TAG, "Subscribed to %s (msg_id=%d)", topic, msg_id);
-            }
-            break;
-        case MQTT_EVENT_DISCONNECTED:
-            ESP_LOGW(TAG, "MQTT_EVENT_DISCONNECTED");
-            break;
-        case MQTT_EVENT_SUBSCRIBED:
-            ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
-            break;
-        case MQTT_EVENT_UNSUBSCRIBED:
-            ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
-            break;
-        case MQTT_EVENT_PUBLISHED:
-            ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
-            break;
-        case MQTT_EVENT_DATA: {
-            // topic and payload are NOT null-terminated
-            std::string topic(event->topic, event->topic_len);
-            std::string payload(event->data, event->data_len);
-            ESP_LOGI(TAG, "MQTT_EVENT_DATA topic=%s payload=%s", topic.c_str(), payload.c_str());
-            // Check command topics: "home/lightN/command"
-            for (size_t i = 0; i < RELAY_COUNT; ++i) {
-                char expected[64];
-                build_topic(expected, sizeof(expected), "command", i);
-                if (topic == expected) {
-                    // Accept "ON"/"OFF" (case-insensitive) and "1"/"0"
-                    if (payload.size() >= 1) {
-                        if (payload == "ON" || payload == "on" || payload == "1") {
-                            apply_state(i, true);
-                        } else if (payload == "OFF" || payload == "off" || payload == "0") {
-                            apply_state(i, false);
-                        } else {
-                            ESP_LOGW(TAG, "Unknown payload for %s: %s", expected, payload.c_str());
-                        }
-                    }
-                    break;
-                }
-            }
-            break;
+    case MQTT_EVENT_CONNECTED:
+        ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+        // subscribe to all command topics for relays
+        for (size_t i = 0; i < RELAY_COUNT; ++i) {
+            char topic[64];
+            build_topic(topic, sizeof(topic), "command", i);
+            int msg_id = esp_mqtt_client_subscribe(mqtt_client, topic, 0);
+            ESP_LOGI(TAG, "Subscribed to %s (msg_id=%d)", topic, msg_id);
+
+            // Publish discovery and current retained state
+            publish_discovery(i);
+            publish_state(i);
         }
-        case MQTT_EVENT_ERROR:
-            ESP_LOGE(TAG, "MQTT_EVENT_ERROR");
-            break;
-        default:
-            ESP_LOGI(TAG, "Other MQTT event id=%d", event->event_id);
-            break;
+        break;
+    case MQTT_EVENT_DISCONNECTED:
+        ESP_LOGW(TAG, "MQTT_EVENT_DISCONNECTED");
+        break;
+    case MQTT_EVENT_SUBSCRIBED:
+        ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
+        break;
+    case MQTT_EVENT_UNSUBSCRIBED:
+        ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
+        break;
+    case MQTT_EVENT_PUBLISHED:
+        ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
+        break;
+    case MQTT_EVENT_DATA: {
+        // topic and payload are NOT null-terminated
+        std::string topic(event->topic, event->topic_len);
+        std::string payload(event->data, event->data_len);
+        ESP_LOGI(TAG, "MQTT_EVENT_DATA topic=%s payload=%s", topic.c_str(), payload.c_str());
+        // Check command topics: "home/lightN/command"
+        for (size_t i = 0; i < RELAY_COUNT; ++i) {
+            char expected[64];
+            build_topic(expected, sizeof(expected), "command", i);
+            if (topic == expected) {
+                // Accept "ON"/"OFF" (case-insensitive) and "1"/"0"
+                if (payload.size() >= 1) {
+                    if (payload == "ON" || payload == "on" || payload == "1") {
+                        apply_state(i, true);
+                    } else if (payload == "OFF" || payload == "off" || payload == "0") {
+                        apply_state(i, false);
+                    } else {
+                        ESP_LOGW(TAG, "Unknown payload for %s: %s", expected, payload.c_str());
+                    }
+                }
+                break;
+            }
+        }
+        break;
+    }
+    case MQTT_EVENT_ERROR:
+        ESP_LOGE(TAG, "MQTT_EVENT_ERROR");
+        break;
+    default:
+        ESP_LOGI(TAG, "Other MQTT event id=%d", event->event_id);
+        break;
     }
     return ESP_OK;
 }
