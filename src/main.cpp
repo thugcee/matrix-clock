@@ -215,7 +215,7 @@ void gestureTask(void* pvParameters) {
             xSemaphoreGive(display_data_sem);
         }
         sensor->clearInterrupt();
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 
