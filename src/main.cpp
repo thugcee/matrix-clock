@@ -126,20 +126,6 @@ void initForecastUpdate() {
     }
 }
 
-void handleRebootStormDetection() {
-    // Reboot storm detection mechanism.
-    reboot_control::reboot_count++;
-    if (reboot_control::reboot_count >= reboot_control::MAX_REBOOTS) {
-        Serial.println("Reboot storm detected! Entering deep sleep for " +
-                       String(reboot_control::SLEEP_TIME_ON_STORM_US) + " ms");
-        esp_sleep_enable_timer_wakeup(reboot_control::SLEEP_TIME_ON_STORM_US);
-        esp_deep_sleep_start();
-    }
-    // Monitor uptime to reset reboot counter after stable runtime.
-    xTaskCreate(reboot_control::reset_reboot_counter_task, "ResetRebootCounter", 2048, NULL, 1,
-                NULL);
-}
-
 void initSerial() {
     Serial.begin(115200);
     while (!Serial) {
@@ -258,9 +244,9 @@ void prepareMatrixDisplay(MD_Parola& display) {
 void setup() {
     initSerial();
 
-    gpio_install_isr_service(0); // installs default ISR service; call once
+    reboot_control::handleRebootStormDetection();
 
-    handleRebootStormDetection();
+    gpio_install_isr_service(ESP_INTR_FLAG_SHARED);
 
     // Initialize I2C
     Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ_HZ);
