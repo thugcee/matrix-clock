@@ -20,11 +20,11 @@ bool setup_wifi() {
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     delay(2000); // Give some time for WiFi to connect
 
-    int timeout = 20;
-    while (WiFi.status() != WL_CONNECTED && timeout > 0) {
+    int retries = 20;
+    while (WiFi.status() != WL_CONNECTED && retries > 0) {
         delay(5000);
         Serial.println("  still waiting for WiFi...");
-        timeout--;
+        retries--;
     }
 
     if (WiFi.status() != WL_CONNECTED) {
