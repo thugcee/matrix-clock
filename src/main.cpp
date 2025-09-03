@@ -133,17 +133,31 @@ void initSerial() {
     } // wait for Serial on some boards
 }
 
-void processProximityInterruption(Adafruit_APDS9960* sensor) {
-    uint8_t proximity = sensor->readProximity();
-    Serial.printf("Gesture hander: Proximity value: %d\n", proximity);
+ForecastPage detect_forecast_page(uint8_t proximity) {
+    if (proximity < FORECAST_PAGE_SWITCH_PROXIMITY) {
+        return ForecastPage::Range;
+    } else {
+        return ForecastPage::Chart;
+    }
+}
+
+void processProximity(ForecastPage page) {
     if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
-        current_page = DisplayPage::Forecast;
-        parola_display.setTextAlignment(PA_LEFT);
-        char forecast_buf[12];
-        format_temp_range(forecast_buf, sizeof(forecast_buf), forecast_data.min_temp,
-                          forecast_data.max_temp);
+        switch (page) {
+        case ForecastPage::Range:
+            parola_display.setTextAlignment(PA_LEFT);
+            char forecast_buf[12];
+            format_temp_range(forecast_buf, sizeof(forecast_buf), forecast_data.min_temp,
+                              forecast_data.max_temp);
+            parola_display.printf("%s", forecast_buf);
+            break;
+        case ForecastPage::Chart:
+            display_forecast_chart();
+            break;
+        default:
+            break;
+        }
         xSemaphoreGive(display_data_sem);
-        parola_display.printf("%s", forecast_buf);
     }
 }
 
@@ -162,7 +176,7 @@ void gestureTask(void* pvParameters) {
         // Block until notified by ISR. Use ulTaskNotifyTake or semaphore take.
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY); // clear on exit
 
-        Serial.println("Gesture Task: notification detected, processing...");
+        Serial.println("Gesture Task: notification detected...");
         sensor->disableProximityInterrupt();
         if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
             current_page = DisplayPage::Forecast;
@@ -170,33 +184,29 @@ void gestureTask(void* pvParameters) {
         }
         vTaskDelay(pdMS_TO_TICKS(10));
 
-        processProximityInterruption(sensor);
-        vTaskDelay(pdMS_TO_TICKS(10));
-
         unsigned long start_millis = get_uptime_millis();
         Serial.println("Gesture task: waiting for proximity leave...");
-        bool chart_already_shown = false;
-        while (sensor->readProximity() > 0) {
-            vTaskDelay(pdMS_TO_TICKS(100));
-            unsigned long current_second = get_uptime_millis();
-            if (current_second - start_millis >= FORECAST_CHART_WAIT * 1000UL &&
-                !chart_already_shown) {
-                if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
-                    display_forecast_chart();
-                    xSemaphoreGive(display_data_sem);
-                }
-                chart_already_shown = true;
+        uint8_t proximity;
+        ForecastPage last_page = ForecastPage::None;
+        while ((proximity = sensor->readProximity()) > 0) {
+            ForecastPage page = detect_forecast_page(proximity);
+            if (page != last_page) {
+                processProximity(page);
+                last_page = page;
             }
+            vTaskDelay(pdMS_TO_TICKS(100));
+            unsigned long current_millis = get_uptime_millis();
+            if (current_millis - start_millis > 30 * 1000UL)
+                break;
         }
         Serial.println("Gesture task: proximity cleared.");
         unsigned long end_millis = get_uptime_millis();
         unsigned long elapsed = end_millis - start_millis;
-        if (long left = FORECAST_DISPLAY_TIME_SECONDS * 1000UL - elapsed + chart_already_shown
-                            ? FORECAST_ADDITIONAL_CHART_DISPLAY_TIME_SECONDS * 1000UL
-                            : 0;
+        if (long left = FORECAST_MINIMAL_DISPLAY_TIME_SECONDS * 1000UL - elapsed;
             left > 0) {
             Serial.printf(
-                "Gesture task: waiting for %ld milliseconds before returning to time display.\n", left);
+                "Gesture task: waiting for %ld milliseconds before returning to time display.\n",
+                left);
             vTaskDelay(pdMS_TO_TICKS(left));
         }
         if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
@@ -217,7 +227,6 @@ void display_forecast_chart() {
     for (int i = 0; i < 16 && i < FORECAST_HOURS && i < MATRIX_WIDTH; i++) {
         parola_display.getGraphicObject()->setColumn(FORECAST_HOURS - 1 - i,
                                                      reverse_bits_compact(columns_bits[i]));
-        Serial.printf("Col %2d: 0x%02X\n", i, columns_bits[i]);
     }
 }
 
