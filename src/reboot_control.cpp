@@ -82,6 +82,7 @@ void handleRebootStormDetection() {
     if (reboot_count >= MAX_REBOOTS) {
         Serial.println("Reboot storm detected! Entering deep sleep for " +
                        String(SLEEP_TIME_ON_STORM_US) + " ms");
+        reset_reboot_count();
         esp_sleep_enable_timer_wakeup(SLEEP_TIME_ON_STORM_US);
         esp_deep_sleep_start();
     }
