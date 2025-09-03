@@ -25,8 +25,8 @@ void wait_until_next_minute(void) {
     vTaskDelay(ticks);
 }
 
-unsigned long get_uptime_seconds() {
-    return esp_timer_get_time() / 1000000UL;
+unsigned long get_uptime_millis() {
+    return esp_timer_get_time() / 1000UL;
 }
 
 int64_t get_current_epoch_second() {

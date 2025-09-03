@@ -173,13 +173,14 @@ void gestureTask(void* pvParameters) {
         processProximityInterruption(sensor);
         vTaskDelay(pdMS_TO_TICKS(10));
 
-        unsigned long start_second = get_uptime_seconds();
+        unsigned long start_millis = get_uptime_millis();
         Serial.println("Gesture task: waiting for proximity leave...");
         bool chart_already_shown = false;
         while (sensor->readProximity() > 0) {
             vTaskDelay(pdMS_TO_TICKS(100));
-            unsigned long current_second = get_uptime_seconds();
-            if (current_second - start_second >= FORECAST_CHART_WAIT && !chart_already_shown) {
+            unsigned long current_second = get_uptime_millis();
+            if (current_second - start_millis >= FORECAST_CHART_WAIT * 1000UL &&
+                !chart_already_shown) {
                 if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
                     display_forecast_chart();
                     xSemaphoreGive(display_data_sem);
@@ -188,15 +189,15 @@ void gestureTask(void* pvParameters) {
             }
         }
         Serial.println("Gesture task: proximity cleared.");
-        unsigned long end_second = get_uptime_seconds();
-        unsigned long elapsed = end_second - start_second;
-        if (long left = FORECAST_DISPLAY_TIME_SECONDS - elapsed + chart_already_shown
-                            ? FORECAST_ADDITIONAL_CHART_DISPLAY_TIME_SECONDS
+        unsigned long end_millis = get_uptime_millis();
+        unsigned long elapsed = end_millis - start_millis;
+        if (long left = FORECAST_DISPLAY_TIME_SECONDS * 1000UL - elapsed + chart_already_shown
+                            ? FORECAST_ADDITIONAL_CHART_DISPLAY_TIME_SECONDS * 1000UL
                             : 0;
             left > 0) {
             Serial.printf(
-                "Gesture task: waiting for %ld seconds before returning to time display.\n", left);
-            vTaskDelay(pdMS_TO_TICKS(left * 1000));
+                "Gesture task: waiting for %ld milliseconds before returning to time display.\n", left);
+            vTaskDelay(pdMS_TO_TICKS(left));
         }
         if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
             current_page = DisplayPage::Time;

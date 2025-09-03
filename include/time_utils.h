@@ -25,7 +25,7 @@ int64_t get_current_epoch_second();
  * as the number of seconds.
  * @return unsigned long The system uptime in seconds.
  */
-unsigned long get_uptime_seconds();
+unsigned long get_uptime_millis();
 
  /**
  * @brief Waits until the start of the next minute.
