@@ -30,10 +30,14 @@ bool setupAPDS9960(Adafruit_APDS9960& sensor, gpio_num_t interruptPin, void (*is
     sensor.enableProximity(true);
     sensor.enableProximityInterrupt();
 
-    Serial.println("APDS-9960: Sensing enabled.");
+    Serial.println("APDS-9960: Sensor configured.");
 
     // Attach the interrupt handler
-    gpio_isr_handler_add(interruptPin, isr, nullptr);
+    esp_err_t err = gpio_isr_handler_add(interruptPin, isr, nullptr);
+    if (err != ESP_OK) {
+        Serial.printf("APDS-9960: Failed to add ISR handler: %s\n", esp_err_to_name(err));
+        return false;
+    }
 
     Serial.println("APDS-9960: Initialization completed.");
     return true;

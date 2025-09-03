@@ -266,14 +266,14 @@ void setup() {
     Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ_HZ);
     Serial.println("I2C initialized.");
 
-    // Setup APDS9960 gesture sensor
-    gestures_enabled = setupAPDS9960(apds, APDS_INT_PIN, gpio_isr_handler);
-
     wifi_enabled = net_utils::setup_wifi();
     if (wifi_enabled) {
         net_utils::setup_NTP(timeClient);
         initForecastUpdate();
     }
+
+    // Setup APDS9960 gesture sensor
+    gestures_enabled = setupAPDS9960(apds, APDS_INT_PIN, gpio_isr_handler);
 
     // Power saving
     btStop(); // disables Bluetooth
