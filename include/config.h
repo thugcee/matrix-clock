@@ -20,7 +20,7 @@ constexpr char TIMEZONE[] = "CET-1CEST,M3.5.0/2,M10.5.0/3";
 constexpr int STATUS_UPDATE_INTERVAL_SECONDS{5};
 constexpr int FORECAST_DISPLAY_TIME_SECONDS{4};
 constexpr int FORECAST_ADDITIONAL_CHART_DISPLAY_TIME_SECONDS{4};
-constexpr int FORECAST_CHART_WAIT{2};
+constexpr int FORECAST_CHART_WAIT{1};
 constexpr char FORECAST_API_URL[] =
     "https://api.open-meteo.com/v1/forecast?"
     "latitude=53.428543&longitude=14.552812&hourly=temperature_2m&forecast_days=2";
