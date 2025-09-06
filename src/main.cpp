@@ -86,13 +86,13 @@ void minuteChangeTask(void* pvParameters) {
         if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
             if (current_page == DisplayPage::Time) {
                 time_data = tmp;
-                current_page = DisplayPage::Time; // Switch to time display on minute change
+                Serial.printf("[minute-change] displayed: %s, current time: %s\n,",
+                              time_data.c_str(), get_formatted_local_time().c_str());
                 display_time(time_data, parola_display);
             }
             xSemaphoreGive(display_data_sem);
         }
 
-        Serial.printf("Minute changed! New time: %s\n", get_formatted_local_time().c_str());
         wait_until_next_minute();
     }
 }

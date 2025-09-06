@@ -17,7 +17,7 @@ void wait_until_next_minute(void) {
     int64_t ms_into_minute = ms_now % 60000;
 
     // How many ms to next minute
-    int64_t ms_to_next_minute = 60000 - ms_into_minute;
+    int64_t ms_to_next_minute = 60000 - ms_into_minute + 1;
 
     // Convert ms to FreeRTOS ticks (round up to nearest tick)
     TickType_t ticks = pdMS_TO_TICKS(ms_to_next_minute);
