@@ -20,6 +20,6 @@ jobs:
       - name: Install PlatformIO Core
         run: pip install --upgrade platformio
       - name: Provide some secrets.cpp
-        run: mv src/secrets.cpp.dist src/secrets.cp
+        run: mv src/secrets.cpp.dist src/secrets.cpp
       - name: Build PlatformIO Project
         run: pio run
