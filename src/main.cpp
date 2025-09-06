@@ -48,6 +48,8 @@ SemaphoreHandle_t display_data_sem;
 
 static TaskHandle_t gestureTaskHandle = nullptr;
 
+void display_forecast_chart();
+
 /**
  * @brief FreeRTOS task that runs periodically to update the weather forecast.
  * @param pvParameters Task parameters (not used here).
