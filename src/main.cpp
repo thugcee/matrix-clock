@@ -44,6 +44,7 @@ MD_Parola parola_display = MD_Parola(DISPLAY_HARDWARE_TYPE, DISPLAY_DATA_PIN, DI
 
 String time_data = "Err time";
 ForecastData16 forecast_data{};
+ForecastData16 forecast_err_data{0, 0, {0.f}, 0};
 SemaphoreHandle_t display_data_sem;
 
 static TaskHandle_t gestureTaskHandle = nullptr;
@@ -67,6 +68,10 @@ void weatherUpdateTask(void* pvParameters) {
             }
             Serial.println("[Task] Successfully fetched forecast.");
         } else {
+            if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
+                forecast_data = forecast_err_data;
+                xSemaphoreGive(display_data_sem);
+            }
             Serial.println("[Task] Error fetching forecast: " + newForecast.unwrapErr());
         }
 

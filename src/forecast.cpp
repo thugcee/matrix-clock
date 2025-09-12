@@ -84,6 +84,12 @@ template void format_temp_at_hour<FORECAST_HOURS>(char* buf, size_t bufsize,
 void format_temp_range(char* buf, size_t bufsize, float min, float max) {
     if (!buf || bufsize == 0)
         return;
+    if (min == 0.f && max == 0.f) {
+        // no data
+        snprintf(buf, bufsize, "NoData");
+        return;
+    }
+
     int min_i = (int)round(min);
     int max_i = (int)round(max);
     snprintf(buf, bufsize, "%d-%d", min_i, max_i);
