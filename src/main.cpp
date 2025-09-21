@@ -195,7 +195,7 @@ void gestureTask(void* pvParameters) {
         Serial.println("Gesture task: waiting for proximity leave...");
         uint8_t proximity;
         ForecastPage last_page = ForecastPage::None;
-        while ((proximity = sensor->readProximity()) > 0) {
+        while ((proximity = sensor->readProximity()) > 2) {
             ForecastPage page = detect_forecast_page(proximity);
             if (page != last_page) {
                 processProximity(page);
@@ -203,8 +203,10 @@ void gestureTask(void* pvParameters) {
             }
             vTaskDelay(pdMS_TO_TICKS(100));
             unsigned long current_millis = get_uptime_millis();
-            if (current_millis - start_millis > 30 * 1000UL)
+            if (current_millis - start_millis > 30 * 1000UL) {
+                Serial.println("Gesture task: timeout reached, exiting gesture display.");
                 break;
+            }
         }
         Serial.println("Gesture task: proximity cleared.");
         unsigned long end_millis = get_uptime_millis();
