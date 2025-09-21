@@ -2,6 +2,8 @@
 #include "config.h"
 #include "display_pages.h"
 #include "forecast.h"
+#include "font.h"
+#include "icons.h"
 #include "mem_mon.h"
 #include "net_utils.h"
 #include "reboot_control.h"
@@ -89,7 +91,7 @@ void display_time(String time, MD_Parola& parolaDisplay) {
 void minuteChangeTask(void* pvParameters) {
     // Task that updates the time display every minute.
     while (1) {
-        String tmp = get_formatted_local_time("%H : %M");
+        String tmp = format_time_for_display();
         if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
             if (current_page == DisplayPage::Time) {
                 time_data = tmp;
@@ -256,8 +258,11 @@ void screenUpdateTask(void* pvParameters) {
 void prepareMatrixDisplay(MD_Parola& display) {
     display.begin();
     display.displayClear();
+    display.setFont(customFont); 
     display.setIntensity(DISPLAY_BRIGHTNESS);
+    display.addChar(Icons::RAIN_CODE, Icons::RAIN_DATA);
     display.setTextAlignment(PA_CENTER);
+    Serial.println("Matrix display initialized.");
 }
 
 void setup() {

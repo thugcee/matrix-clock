@@ -56,6 +56,16 @@ String get_formatted_local_time(const char* format) {
     return String(buf);
 }
 
+String format_time_for_display() {
+    struct tm timeinfo = get_local_time();
+    int wday = timeinfo.tm_wday; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    uint8_t wchar = 191 + wday;
+    char buf[32];
+    strftime(buf, sizeof(buf), "  %H:%M", &timeinfo);
+    buf[0] = wchar;
+    return String(buf);
+}
+
 int get_GMT_hour() {
     time_t now = time(nullptr);
     struct tm timeinfo;

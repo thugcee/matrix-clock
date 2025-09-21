@@ -86,3 +86,15 @@ String get_formatted_local_time(const char* format = "%Y-%m-%d %H:%M:%S");
  * @return A String representing the formatted time.
  */
 String format_millis(unsigned long rawMillis);
+
+/**
+ * @brief Formats the current local time for display on the matrix.
+ *
+ * This function retrieves the current local time and formats it as a string
+ * suitable for display on the matrix, in the form "  HH:MM" with a leading
+ * space for alignment. The first character is replaced with a special
+ * character representing the day of the week (0=Sun, 1=Mon, ..., 6=Sat).
+ *
+ * @return A String representing the formatted time for display.
+ */
+String format_time_for_display();

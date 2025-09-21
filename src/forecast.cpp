@@ -92,7 +92,7 @@ void format_temp_range(char* buf, size_t bufsize, float min, float max) {
 
     int min_i = (int)round(min);
     int max_i = (int)round(max);
-    snprintf(buf, bufsize, "%d-%d", min_i, max_i);
+    snprintf(buf, bufsize, "%d-%d\xBA" "C", min_i, max_i);
 }
 
 template <uint8_t STORED_HOURS>
