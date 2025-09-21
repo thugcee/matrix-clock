@@ -11,6 +11,31 @@ unsigned char reverse_bits_compact(unsigned char b) {
     return b;
 }
 
+// Precipitation probability chart (0-80% scaling)
+template <size_t STORED_HOURS>
+std::array<uint8_t, STORED_HOURS> forecast_to_columns_precip(const ForecastData<STORED_HOURS>& f) {
+    constexpr float min_precip = 0.0f;
+    constexpr float max_precip = 80.0f;
+    constexpr float range = max_precip - min_precip;
+    constexpr float scale = (MATRIX_HEIGHT - 1) / range;
+    std::array<uint8_t, STORED_HOURS> cols{};
+    cols.fill(0);
+    for (size_t i = 0; i < STORED_HOURS; ++i) {
+        float p = f.precipitation_probability[i];
+        if (p < min_precip) p = min_precip;
+        if (p > max_precip) p = max_precip;
+        float pos = (p - min_precip) * scale;
+        int row = static_cast<int>(std::lround(pos));
+        if (row < 0) row = 0;
+        if (row >= static_cast<int>(MATRIX_HEIGHT)) row = MATRIX_HEIGHT - 1;
+        uint8_t bits = static_cast<uint8_t>((1u << (row + 1)) - 1u);
+        cols[i] = bits;
+    }
+    return cols;
+}
+template std::array<uint8_t, FORECAST_HOURS>
+forecast_to_columns_precip<FORECAST_HOURS>(const ForecastData<FORECAST_HOURS>& f);
+
 template <size_t STORED_HOURS>
 std::array<uint8_t, STORED_HOURS> forecast_to_columns(const ForecastData<STORED_HOURS>& f) {
     std::array<uint8_t, STORED_HOURS> cols{};
@@ -131,14 +156,18 @@ typename ForecastData<STORED_HOURS>::result_t get_forecast(int start_hour) {
 
             // Check if the expected data is present
             if (!doc["hourly"].is<JsonObject>() ||
-                !doc["hourly"]["temperature_2m"].is<JsonArray>()) {
+                !doc["hourly"]["temperature_2m"].is<JsonArray>() ||
+                !doc["hourly"]["precipitation_probability"].is<JsonArray>()) {
                 http.end();
                 return ForecastResult::Err("Error: Invalid JSON format from API.");
             }
 
             JsonArray temps = doc["hourly"]["temperature_2m"].as<JsonArray>();
+            JsonArray precs = doc["hourly"]["precipitation_probability"].as<JsonArray>();
 
-            if (temps.isNull() || temps.size() <= start_hour + STORED_HOURS) {
+            if (temps.isNull() || precs.isNull() ||
+                temps.size() <= start_hour + STORED_HOURS ||
+                precs.size() <= start_hour + STORED_HOURS) {
                 http.end();
                 return ForecastResult::Err("Error: Not enough forecast data available.");
             }
@@ -149,7 +178,8 @@ typename ForecastData<STORED_HOURS>::result_t get_forecast(int start_hour) {
             forecast_data.max_temp = temps[start_hour].as<float>();
             for (int i = start_hour; i < temps.size() && i < start_hour + FORECAST_HOURS; i++) {
                 float current_temp = temps[i].as<float>();
-                Serial.printf("Hour %02d: Temp = %.2f\n", i >= 24 ? i - 24 : i, current_temp);
+                float current_prec = precs[i].as<float>();
+                Serial.printf("Hour %02d: Temp = %.2f, Prec = %.2f\n", i >= 24 ? i - 24 : i, current_temp, current_prec);
                 if (current_temp < forecast_data.min_temp) {
                     forecast_data.min_temp = current_temp;
                 }
@@ -157,6 +187,7 @@ typename ForecastData<STORED_HOURS>::result_t get_forecast(int start_hour) {
                     forecast_data.max_temp = current_temp;
                 }
                 forecast_data.hourly_temps[i - start_hour] = current_temp;
+                forecast_data.precipitation_probability[i - start_hour] = current_prec;
             }
 
             http.end(); // Free resources

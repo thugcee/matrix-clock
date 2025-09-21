@@ -8,6 +8,7 @@ enum class DisplayPage : uint8_t {
 
 enum class ForecastPage : uint8_t {
     None = 0,
-    Range = 1,
-    Chart = 2,
+    TemperatureRange = 1,
+    TemperatureChart = 2,
+    PrecipitationChart = 3,
 };

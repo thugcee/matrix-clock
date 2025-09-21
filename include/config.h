@@ -20,9 +20,10 @@ constexpr char TIMEZONE[] = "CET-1CEST,M3.5.0/2,M10.5.0/3";
 constexpr int STATUS_UPDATE_INTERVAL_SECONDS{5};
 constexpr int FORECAST_MINIMAL_DISPLAY_TIME_SECONDS{3};
 constexpr uint8_t FORECAST_PAGE_SWITCH_PROXIMITY{12}; // proximity threshold to switch forecast pages
+constexpr uint8_t PRECIPITATION_PAGE_SWITCH_PROXIMITY{100}; // proximity threshold for precipitation chart
 constexpr char FORECAST_API_URL[] =
     "https://api.open-meteo.com/v1/forecast?"
-    "latitude=53.428543&longitude=14.552812&hourly=temperature_2m&forecast_days=2";
+    "latitude=53.428543&longitude=14.552812&hourly=temperature_2m,precipitation_probability&forecast_days=2";
 constexpr uint8_t FORECAST_HOURS = 16;
 
 // Display hardware/type (enum-like). Replace with the actual enum type.    

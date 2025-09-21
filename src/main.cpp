@@ -46,12 +46,14 @@ MD_Parola parola_display = MD_Parola(DISPLAY_HARDWARE_TYPE, DISPLAY_DATA_PIN, DI
 
 String time_data = "Err time";
 ForecastData16 forecast_data{};
-ForecastData16 forecast_err_data{0, 0, {0.f}, 0};
+ForecastData16 forecast_err_data{0, 0, {0.f}, {0.f}, 0};
 SemaphoreHandle_t display_data_sem;
 
 static TaskHandle_t gestureTaskHandle = nullptr;
 
+void display_temperature_range();
 void display_forecast_chart();
+void display_precip_chart();
 
 /**
  * @brief FreeRTOS task that runs periodically to update the weather forecast.
@@ -81,6 +83,14 @@ void weatherUpdateTask(void* pvParameters) {
         const int updateIntervalMs = 3600 * 1000; // 1 hour
         vTaskDelay(updateIntervalMs / portTICK_PERIOD_MS);
     }
+}
+
+void display_temperature_range() {
+    parola_display.setTextAlignment(PA_LEFT);
+    char forecast_buf[12];
+    format_temp_range(forecast_buf, sizeof(forecast_buf), forecast_data.min_temp,
+                      forecast_data.max_temp);
+    parola_display.printf("%s", forecast_buf);
 }
 
 void display_time(String time, MD_Parola& parolaDisplay) {
@@ -144,24 +154,25 @@ void initSerial() {
 
 ForecastPage detect_forecast_page(uint8_t proximity) {
     if (proximity < FORECAST_PAGE_SWITCH_PROXIMITY) {
-        return ForecastPage::Range;
+        return ForecastPage::TemperatureRange;
+    } else if (proximity < PRECIPITATION_PAGE_SWITCH_PROXIMITY) {
+        return ForecastPage::TemperatureChart;
     } else {
-        return ForecastPage::Chart;
+        return ForecastPage::PrecipitationChart;
     }
 }
 
 void processProximity(ForecastPage page) {
     if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
         switch (page) {
-        case ForecastPage::Range:
-            parola_display.setTextAlignment(PA_LEFT);
-            char forecast_buf[12];
-            format_temp_range(forecast_buf, sizeof(forecast_buf), forecast_data.min_temp,
-                              forecast_data.max_temp);
-            parola_display.printf("%s", forecast_buf);
+        case ForecastPage::TemperatureRange:
+            display_temperature_range();
             break;
-        case ForecastPage::Chart:
+        case ForecastPage::TemperatureChart:
             display_forecast_chart();
+            break;
+        case ForecastPage::PrecipitationChart:
+            display_precip_chart();
             break;
         default:
             break;
@@ -235,6 +246,17 @@ void display_forecast_chart() {
     parola_display.setTextAlignment(PA_LEFT);
     parola_display.printf("%d:", int(round(forecast_data.hourly_temps[0])));
     auto columns_bits = forecast_to_columns<FORECAST_HOURS>(forecast_data);
+    for (int i = 0; i < 16 && i < FORECAST_HOURS && i < MATRIX_WIDTH; i++) {
+        parola_display.getGraphicObject()->setColumn(FORECAST_HOURS - 1 - i,
+                                                     reverse_bits_compact(columns_bits[i]));
+    }
+}
+
+void display_precip_chart() {
+    parola_display.displayClear();
+    char iconStr[2] = { Icons::RAIN_CODE, '\0' };
+    parola_display.print(iconStr);
+    auto columns_bits = forecast_to_columns_precip<FORECAST_HOURS>(forecast_data);
     for (int i = 0; i < 16 && i < FORECAST_HOURS && i < MATRIX_WIDTH; i++) {
         parola_display.getGraphicObject()->setColumn(FORECAST_HOURS - 1 - i,
                                                      reverse_bits_compact(columns_bits[i]));
