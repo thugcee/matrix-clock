@@ -13,11 +13,30 @@ void wait_until_next_minute(void) {
     // Convert to milliseconds since epoch
     int64_t ms_now = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
 
-    // Compute ms into current minute
+    // Compute ms in current minute
     int64_t ms_into_minute = ms_now % 60000;
 
     // How many ms to next minute
     int64_t ms_to_next_minute = 60000 - ms_into_minute + 1;
+
+    // Convert ms to FreeRTOS ticks (round up to nearest tick)
+    TickType_t ticks = pdMS_TO_TICKS(ms_to_next_minute);
+
+    vTaskDelay(ticks);
+}
+
+void wait_until_next_second(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    // Convert to milliseconds since epoch
+    int64_t ms_now = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+
+    // Compute ms into current second
+    int64_t ms_into_minute = ms_now % 1000;
+
+    // How many ms to next second
+    int64_t ms_to_next_minute = 1000 - ms_into_minute + 1;
 
     // Convert ms to FreeRTOS ticks (round up to nearest tick)
     TickType_t ticks = pdMS_TO_TICKS(ms_to_next_minute);
@@ -58,11 +77,8 @@ String get_formatted_local_time(const char* format) {
 
 String format_time_for_display() {
     struct tm timeinfo = get_local_time();
-    int wday = timeinfo.tm_wday; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-    uint8_t wchar = 191 + wday;
     char buf[32];
-    strftime(buf, sizeof(buf), "  %H:%M", &timeinfo);
-    buf[0] = wchar;
+    strftime(buf, sizeof(buf), "%H;%M", &timeinfo);
     return String(buf);
 }
 

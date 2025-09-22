@@ -51,9 +51,11 @@ SemaphoreHandle_t display_data_sem;
 
 static TaskHandle_t gestureTaskHandle = nullptr;
 
+void display_time(String time, MD_Parola& parolaDisplay);
 void display_temperature_range();
 void display_forecast_chart();
 void display_precip_chart();
+void display_seconds(int current_second);
 
 /**
  * @brief FreeRTOS task that runs periodically to update the weather forecast.
@@ -83,19 +85,6 @@ void weatherUpdateTask(void* pvParameters) {
         const int updateIntervalMs = 3600 * 1000; // 1 hour
         vTaskDelay(updateIntervalMs / portTICK_PERIOD_MS);
     }
-}
-
-void display_temperature_range() {
-    parola_display.setTextAlignment(PA_LEFT);
-    char forecast_buf[12];
-    format_temp_range(forecast_buf, sizeof(forecast_buf), forecast_data.min_temp,
-                      forecast_data.max_temp);
-    parola_display.printf("%s", forecast_buf);
-}
-
-void display_time(String time, MD_Parola& parolaDisplay) {
-    parolaDisplay.setTextAlignment(PA_CENTER);
-    parolaDisplay.printf("%s", time.c_str());
 }
 
 void minuteChangeTask(void* pvParameters) {
@@ -241,28 +230,6 @@ void gestureTask(void* pvParameters) {
     }
 }
 
-void display_forecast_chart() {
-    parola_display.displayClear();
-    parola_display.setTextAlignment(PA_LEFT);
-    parola_display.printf("%d:", int(round(forecast_data.hourly_temps[0])));
-    auto columns_bits = forecast_to_columns<FORECAST_HOURS>(forecast_data);
-    for (int i = 0; i < 16 && i < FORECAST_HOURS && i < MATRIX_WIDTH; i++) {
-        parola_display.getGraphicObject()->setColumn(FORECAST_HOURS - 1 - i,
-                                                     reverse_bits_compact(columns_bits[i]));
-    }
-}
-
-void display_precip_chart() {
-    parola_display.displayClear();
-    char iconStr[2] = { Icons::RAIN_CODE, '\0' };
-    parola_display.print(iconStr);
-    auto columns_bits = forecast_to_columns_precip<FORECAST_HOURS>(forecast_data);
-    for (int i = 0; i < 16 && i < FORECAST_HOURS && i < MATRIX_WIDTH; i++) {
-        parola_display.getGraphicObject()->setColumn(FORECAST_HOURS - 1 - i,
-                                                     reverse_bits_compact(columns_bits[i]));
-    }
-}
-
 void ntpUpdateTask(void* pvParameters) {
     while (wifi_enabled) {
         vTaskDelay(pdMS_TO_TICKS(60 * 60 * 1000)); // sync with NTP servers once an hour
@@ -271,18 +238,13 @@ void ntpUpdateTask(void* pvParameters) {
     vTaskDelete(NULL);
 }
 
-void screenUpdateTask(void* pvParameters) {
-    for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(500));
-    }
-}
-
 void prepareMatrixDisplay(MD_Parola& display) {
     display.begin();
     display.displayClear();
-    display.setFont(customFont); 
     display.setIntensity(DISPLAY_BRIGHTNESS);
     display.addChar(Icons::RAIN_CODE, Icons::RAIN_DATA);
+    display.addChar(Icons::WIDE_COLON_CODE, Icons::WIDE_COLON_DATA);
+    display.addChar(Icons::DEG_C_CODE, Icons::DEG_C_DATA);
     display.setTextAlignment(PA_CENTER);
     Serial.println("Matrix display initialized.");
 }
@@ -316,7 +278,6 @@ void setup() {
     xTaskCreate(ntpUpdateTask, "Sync Time", 2048, nullptr, tskIDLE_PRIORITY, nullptr);
     xTaskCreate(minuteChangeTask, "Minute Change", 4096, nullptr, 1, nullptr);
     xTaskCreate(printStatusTask, "Print Status", 4096, nullptr, tskIDLE_PRIORITY, nullptr);
-    xTaskCreate(screenUpdateTask, "Print Status", 4096, nullptr, tskIDLE_PRIORITY, nullptr);
     if (gestures_enabled)
         xTaskCreate(gestureTask, "gestureTask", 4096, &apds, 5, &gestureTaskHandle);
 #ifdef DEBUG_MEM
@@ -325,8 +286,34 @@ void setup() {
 #endif
 }
 
+void display_forecast_chart() {
+    parola_display.displayClear();
+    parola_display.setTextAlignment(PA_LEFT);
+    parola_display.setFont(customFont);
+    char format[] = "%d ";
+    format[sizeof(format)-2] = Icons::DEG_C_CODE;
+    parola_display.printf(format, int(round(forecast_data.hourly_temps[0])));
+    parola_display.setFont(nullptr);
+    auto columns_bits = forecast_to_columns<FORECAST_HOURS>(forecast_data);
+    for (int i = 0; i < 16 && i < FORECAST_HOURS && i < MATRIX_WIDTH; i++) {
+        parola_display.getGraphicObject()->setColumn(FORECAST_HOURS - 1 - i,
+                                                     reverse_bits_compact(columns_bits[i]));
+    }
+}
+
+void display_precip_chart() {
+    parola_display.displayClear();
+    char iconStr[2] = { Icons::RAIN_CODE, '\0' };
+    parola_display.print(iconStr);
+    auto columns_bits = forecast_to_columns_precip<FORECAST_HOURS>(forecast_data);
+    for (int i = 0; i < 16 && i < FORECAST_HOURS && i < MATRIX_WIDTH; i++) {
+        parola_display.getGraphicObject()->setColumn(FORECAST_HOURS - 1 - i,
+                                                     reverse_bits_compact(columns_bits[i]));
+    }
+}
+
 void display_seconds(int current_second) {
-    // Display the current second as a point on the last row
+    // Display the current second indicator on the bottom row of the matrix
     static int last_column = current_second;
     int max_columns = parola_display.getGraphicObject()->getColumnCount();
     int current_second_column = max_columns - 1 - map(current_second, 0, 59, 0, max_columns - 1);
@@ -337,12 +324,23 @@ void display_seconds(int current_second) {
     }
 }
 
-void loop() {
-    vTaskDelay(pdMS_TO_TICKS(1000));
+void display_temperature_range() {
+    parola_display.setTextAlignment(PA_LEFT);
+    char forecast_buf[12];
+    format_temp_range(forecast_buf, sizeof(forecast_buf), forecast_data.min_temp,
+                      forecast_data.max_temp);
+    parola_display.printf("%s", forecast_buf);
+}
 
+void display_time(String time, MD_Parola& parolaDisplay) {
+    parolaDisplay.setTextAlignment(PA_CENTER);
+    parolaDisplay.printf("%s", time.c_str());
+}
+
+void loop() {
     struct tm currentTime = get_local_time();
     int currentSecond = currentTime.tm_sec;
+    wait_until_next_second();
     if (current_page == DisplayPage::Time)
         display_seconds(currentSecond);
-    vTaskDelay(pdMS_TO_TICKS(1000));
 }

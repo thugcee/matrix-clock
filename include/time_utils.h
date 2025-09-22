@@ -37,6 +37,15 @@ unsigned long get_uptime_millis();
 void wait_until_next_minute(void);
 
 /**
+ * @brief Waits until the start of the next second.
+ *
+ * This function calculates the time remaining until the next full second
+ * and puts the calling task to sleep for that duration using FreeRTOS's
+ * vTaskDelay function.
+ */
+void wait_until_next_second(void);
+
+/**
  * @brief Returns the current second within the current minute.
  *
  * This function retrieves the second value (0-59) of the current minute

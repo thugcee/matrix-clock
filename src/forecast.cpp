@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <WString.h>
+#include <icons.h>
 
 unsigned char reverse_bits_compact(unsigned char b) {
     b = (b & 0xF0) >> 4 | (b & 0x0F) << 4; // Swap nibbles
@@ -117,7 +118,9 @@ void format_temp_range(char* buf, size_t bufsize, float min, float max) {
 
     int min_i = (int)round(min);
     int max_i = (int)round(max);
-    snprintf(buf, bufsize, "%d-%d\xBA" "C", min_i, max_i);
+    char format[] = "%d-%d ";
+    format[sizeof(format)-2] = Icons::DEG_C_CODE;
+    snprintf(buf, bufsize, format, min_i, max_i);
 }
 
 template <uint8_t STORED_HOURS>
