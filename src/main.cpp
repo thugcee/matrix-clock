@@ -249,43 +249,6 @@ void prepareMatrixDisplay(MD_Parola& display) {
     Serial.println("Matrix display initialized.");
 }
 
-void setup() {
-    initSerial();
-
-    reboot_control::handleRebootStormDetection();
-
-    gpio_install_isr_service(ESP_INTR_FLAG_SHARED);
-
-    // Initialize I2C
-    Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ_HZ);
-    Serial.println("I2C initialized.");
-
-    wifi_enabled = net_utils::setup_wifi();
-    if (wifi_enabled) {
-        net_utils::setup_NTP(timeClient);
-        initForecastUpdate();
-    }
-
-    // Setup APDS9960 gesture sensor
-    gestures_enabled = setupAPDS9960(apds, APDS_INT_PIN, gpio_isr_handler);
-
-    // Power saving
-    btStop(); // disables Bluetooth
-    setCpuFrequencyMhz(80);
-
-    prepareMatrixDisplay(parola_display);
-
-    xTaskCreate(ntpUpdateTask, "Sync Time", 2048, nullptr, tskIDLE_PRIORITY, nullptr);
-    xTaskCreate(minuteChangeTask, "Minute Change", 4096, nullptr, 1, nullptr);
-    xTaskCreate(printStatusTask, "Print Status", 4096, nullptr, tskIDLE_PRIORITY, nullptr);
-    if (gestures_enabled)
-        xTaskCreate(gestureTask, "gestureTask", 4096, &apds, 5, &gestureTaskHandle);
-#ifdef DEBUG_MEM
-    xTaskCreatePinnedToCore(heap_monitor_task, "heapMon", 4096, nullptr, tskIDLE_PRIORITY + 1,
-                            nullptr, tskNO_AFFINITY);
-#endif
-}
-
 void display_forecast_chart() {
     parola_display.displayClear();
     parola_display.setTextAlignment(PA_LEFT);
@@ -335,6 +298,45 @@ void display_temperature_range() {
 void display_time(String time, MD_Parola& parolaDisplay) {
     parolaDisplay.setTextAlignment(PA_CENTER);
     parolaDisplay.printf("%s", time.c_str());
+}
+
+void setup() {
+    initSerial();
+
+    reboot_control::handleRebootStormDetection();
+
+    gpio_install_isr_service(ESP_INTR_FLAG_SHARED);
+
+    // Initialize I2C
+    Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ_HZ);
+    Serial.println("I2C initialized.");
+
+    prepareMatrixDisplay(parola_display);
+
+    wifi_enabled = net_utils::setup_wifi();
+    if (wifi_enabled) {
+        parola_display.displayClear();
+        parola_display.print("NTP...");
+        net_utils::setup_NTP(timeClient);
+        initForecastUpdate();
+    }
+
+    // Setup APDS9960 gesture sensor
+    gestures_enabled = setupAPDS9960(apds, APDS_INT_PIN, gpio_isr_handler);
+
+    // Power saving
+    btStop(); // disables Bluetooth
+    setCpuFrequencyMhz(80);
+
+    xTaskCreate(ntpUpdateTask, "Sync Time", 2048, nullptr, tskIDLE_PRIORITY, nullptr);
+    xTaskCreate(minuteChangeTask, "Minute Change", 4096, nullptr, 1, nullptr);
+    xTaskCreate(printStatusTask, "Print Status", 4096, nullptr, tskIDLE_PRIORITY, nullptr);
+    if (gestures_enabled)
+        xTaskCreate(gestureTask, "gestureTask", 4096, &apds, 5, &gestureTaskHandle);
+#ifdef DEBUG_MEM
+    xTaskCreatePinnedToCore(heap_monitor_task, "heapMon", 4096, nullptr, tskIDLE_PRIORITY + 1,
+                            nullptr, tskNO_AFFINITY);
+#endif
 }
 
 void loop() {

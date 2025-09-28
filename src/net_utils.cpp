@@ -47,7 +47,10 @@ bool setup_wifi() {
  */
 void setup_NTP(NTPClient& time_client) {
     time_client.begin();
-    time_client.forceUpdate(); // Blocking call to sync time immediately
+    while ( !time_client.update() ) {
+        Serial.println("[NTP] still waiting for first synchronisation...");
+        delay(10000);
+    }
     Serial.printf("Synchronised UTC time: %s\n", time_client.getFormattedTime().c_str());
 
     time_t utc = time_client.getEpochTime();
