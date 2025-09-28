@@ -51,7 +51,7 @@ constexpr char MQTT_BROKER_IP[] = "BROKER_IP_PLACEHOLDER"; // replace with e.g. 
 constexpr uint16_t MQTT_BROKER_PORT = 1883;
 
 // Device and MQTT topic base
-constexpr char DEVICE_NAME[] = "matrix-clock";
+constexpr char DEVICE_NAME[] = "sew-matrix-clock";
 constexpr char MQTT_TOPIC_BASE[] = "clock"; // final topics will be "home/light1/command", etc.
 
 // Relay GPIOs (default: 3 relays; add 4th if needed)

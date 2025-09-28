@@ -1,8 +1,8 @@
 #include "apds9960.h"
 #include "config.h"
 #include "display_pages.h"
-#include "forecast.h"
 #include "font.h"
+#include "forecast.h"
 #include "icons.h"
 #include "mem_mon.h"
 #include "net_utils.h"
@@ -16,6 +16,7 @@
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "mdns.h"
 
 #include <Adafruit_APDS9960.h> // <- Changed include
 #include <Arduino.h>
@@ -213,8 +214,7 @@ void gestureTask(void* pvParameters) {
         Serial.println("Gesture task: proximity cleared.");
         unsigned long end_millis = get_uptime_millis();
         unsigned long elapsed = end_millis - start_millis;
-        if (long left = FORECAST_MINIMAL_DISPLAY_TIME_SECONDS * 1000UL - elapsed;
-            left > 0) {
+        if (long left = FORECAST_MINIMAL_DISPLAY_TIME_SECONDS * 1000UL - elapsed; left > 0) {
             Serial.printf(
                 "Gesture task: waiting for %ld milliseconds before returning to time display.\n",
                 left);
@@ -254,7 +254,7 @@ void display_forecast_chart() {
     parola_display.setTextAlignment(PA_LEFT);
     parola_display.setFont(customFont);
     char format[] = "%d ";
-    format[sizeof(format)-2] = Icons::DEG_C_CODE;
+    format[sizeof(format) - 2] = Icons::DEG_C_CODE;
     parola_display.printf(format, int(round(forecast_data.hourly_temps[0])));
     parola_display.setFont(nullptr);
     auto columns_bits = forecast_to_columns<FORECAST_HOURS>(forecast_data);
@@ -266,7 +266,7 @@ void display_forecast_chart() {
 
 void display_precip_chart() {
     parola_display.displayClear();
-    char iconStr[2] = { Icons::RAIN_CODE, '\0' };
+    char iconStr[2] = {Icons::RAIN_CODE, '\0'};
     parola_display.print(iconStr);
     auto columns_bits = forecast_to_columns_precip<FORECAST_HOURS>(forecast_data);
     for (int i = 0; i < 16 && i < FORECAST_HOURS && i < MATRIX_WIDTH; i++) {
@@ -319,6 +319,8 @@ void setup() {
         parola_display.print("NTP...");
         net_utils::setup_NTP(timeClient);
         initForecastUpdate();
+        setup_mdns();
+        xTaskCreate(ntpUpdateTask, "Sync Time", 2048, nullptr, tskIDLE_PRIORITY, nullptr);
     }
 
     // Setup APDS9960 gesture sensor
@@ -328,7 +330,6 @@ void setup() {
     btStop(); // disables Bluetooth
     setCpuFrequencyMhz(80);
 
-    xTaskCreate(ntpUpdateTask, "Sync Time", 2048, nullptr, tskIDLE_PRIORITY, nullptr);
     xTaskCreate(minuteChangeTask, "Minute Change", 4096, nullptr, 1, nullptr);
     xTaskCreate(printStatusTask, "Print Status", 4096, nullptr, tskIDLE_PRIORITY, nullptr);
     if (gestures_enabled)
@@ -337,6 +338,22 @@ void setup() {
     xTaskCreatePinnedToCore(heap_monitor_task, "heapMon", 4096, nullptr, tskIDLE_PRIORITY + 1,
                             nullptr, tskNO_AFFINITY);
 #endif
+}
+
+void setup_mdns() {
+    // Start the mDNS service
+    esp_err_t err = mdns_init();
+    if (err) {
+        Serial.printf("mDNS Init failed: %d\n", err);
+        return;
+    }
+
+    // Set the hostname and instance name
+    mdns_hostname_set(DEVICE_NAME);
+    mdns_instance_name_set(DEVICE_NAME);
+    Serial.printf("mDNS responder started. Hostname: %s\n", DEVICE_NAME);
+
+    mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
 }
 
 void loop() {

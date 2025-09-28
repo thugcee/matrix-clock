@@ -19,6 +19,7 @@
 - Fetches weather forecast from `api.open-meteo.com` every hour.
 - Uses a popular 32x8 MAX7219 LED matrix display to show data.
 - Uses an APDS‑9960 proximity and gesture sensor to switch displayed pages; only proximity is used for page switching.
+- Advertises its `config.h:DEVICE_NAME` via mDNS.
 - Available pages (from furthest to closest):
   - Current time (`%H:%M`) and day of the week.
   - Weather forecast – minimal and maximal temperature for the next `FORECAST_HOURS`.
