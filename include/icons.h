@@ -27,4 +27,9 @@ namespace Icons {
       8,
       0x18, 0x3c, 0x7e, 0xff, 0xff, 0x7e, 0x3c, 0x18
     };
+
+    inline constexpr uint8_t OTHER_7[] = {
+      5,
+      225, 17, 9, 5, 3, 
+    };
 }

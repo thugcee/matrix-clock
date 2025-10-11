@@ -245,6 +245,7 @@ void prepareMatrixDisplay(MD_Parola& display) {
     display.addChar(Icons::RAIN_CODE, Icons::RAIN_DATA);
     display.addChar(Icons::WIDE_COLON_CODE, Icons::WIDE_COLON_DATA);
     display.addChar(Icons::DEG_C_CODE, Icons::DEG_C_DATA);
+    display.addChar('7', Icons::OTHER_7);
     display.setTextAlignment(PA_CENTER);
     Serial.println("Matrix display initialized.");
 }
