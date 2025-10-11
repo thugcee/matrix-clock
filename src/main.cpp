@@ -7,32 +7,29 @@
 #include "mem_mon.h"
 #include "net_utils.h"
 #include "reboot_control.h"
-#include "secrets.h"
 #include "time_utils.h"
 
 #include "driver/i2c.h"
-#include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "mdns.h"
 
-#include <Adafruit_APDS9960.h> // <- Changed include
+#include <Adafruit_APDS9960.h>
 #include <Arduino.h>
 #include <MD_MAX72xx.h>
 #include <MD_Parola.h>
 #include <NTPClient.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
-#include <stdio.h>
+#include <cstdio>
 #include <sys/time.h>
-#include <time.h>
+#include <ctime>
 
 volatile DisplayPage current_page = DisplayPage::Time;
 
 WiFiUDP net_UDP;
-NTPClient timeClient(net_UDP, NTP_SERVER, 0, NTP_UPDATE_INTERVAL_MS); // UTC offset (0)
+NTPClient timeClient(net_UDP, NTP_SERVER, 0, NTP_UPDATE_INTERVAL_MS); // UTC offset 0
 
 bool wifi_enabled = false;
 bool gestures_enabled = false;
@@ -42,7 +39,7 @@ bool forecast_enabled = true;
 Adafruit_APDS9960 apds;
 
 // LED Matrix Display
-MD_Parola parola_display = MD_Parola(DISPLAY_HARDWARE_TYPE, DISPLAY_DATA_PIN, DISPLAY_CLK_PIN,
+auto parola_display = MD_Parola(DISPLAY_HARDWARE_TYPE, DISPLAY_DATA_PIN, DISPLAY_CLK_PIN,
                                      DISPLAY_CS_PIN, DISPLAY_MAX_DEVICES);
 
 String time_data = "Err time";
@@ -52,9 +49,9 @@ SemaphoreHandle_t display_data_sem;
 
 static TaskHandle_t gestureTaskHandle = nullptr;
 
-void display_time(String time, MD_Parola& parolaDisplay);
-void display_temperature_range();
-void display_forecast_chart();
+void display_time(const String& time, MD_Parola& parolaDisplay);
+
+
 void display_precip_chart();
 void display_seconds(int current_second);
 
@@ -62,14 +59,14 @@ void display_seconds(int current_second);
  * @brief FreeRTOS task that runs periodically to update the weather forecast.
  * @param pvParameters Task parameters (not used here).
  */
-void weatherUpdateTask(void* pvParameters) {
+[[noreturn]] void weatherUpdateTask(void* pvParameters) {
     Serial.println("Weather update task started.");
     for (;;) { // Infinite loop for the task
         Serial.println("[Task] Fetching new weather forecast...");
-        int startHour = get_GMT_hour();
+        const int startHour = get_GMT_hour();
         if (ForecastResult newForecast = get_forecast<FORECAST_HOURS>(startHour); newForecast) {
             if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
-                forecast_data = std::move(newForecast.unwrap());
+                forecast_data = newForecast.unwrap();
                 xSemaphoreGive(display_data_sem);
                 Serial.println("[Task] Forecast updated successfully.");
             }
@@ -83,15 +80,15 @@ void weatherUpdateTask(void* pvParameters) {
         }
 
         // Wait for one hour before the next run
-        const int updateIntervalMs = 3600 * 1000; // 1 hour
+        constexpr int updateIntervalMs = 3600 * 1000; // 1 hour
         vTaskDelay(updateIntervalMs / portTICK_PERIOD_MS);
     }
 }
 
-void minuteChangeTask(void* pvParameters) {
+[[noreturn]] void minuteChangeTask(void* pvParameters) {
     // Task that updates the time display every minute.
-    while (1) {
-        String tmp = format_time_for_display();
+    while (true) {
+        const String tmp = format_time_for_display();
         if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
             if (current_page == DisplayPage::Time) {
                 time_data = tmp;
@@ -106,7 +103,7 @@ void minuteChangeTask(void* pvParameters) {
     }
 }
 
-void printStatusTask(void* parameter) {
+[[noreturn]] void printStatusTask(void* parameter) {
     // Task that prints device uptime and local time periodically.
     char forecast_buf[12];
     while (true) {
@@ -124,7 +121,7 @@ void printStatusTask(void* parameter) {
 void initForecastUpdate() {
     // Initialize the weather forecast task
     display_data_sem = xSemaphoreCreateMutex();
-    if (display_data_sem == NULL) {
+    if (display_data_sem == nullptr) {
         Serial.println("Error: Failed to create mutex.");
         forecast_enabled = false; // Disable forecast updates
     }
@@ -152,7 +149,7 @@ ForecastPage detect_forecast_page(uint8_t proximity) {
     }
 }
 
-void processProximity(ForecastPage page) {
+void processProximity(const ForecastPage page) {
     if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
         switch (page) {
         case ForecastPage::TemperatureRange:
@@ -178,9 +175,9 @@ void IRAM_ATTR gpio_isr_handler(void* arg) {
         portYIELD_FROM_ISR();
 }
 
-void gestureTask(void* pvParameters) {
-    auto sensor = static_cast<Adafruit_APDS9960*>(pvParameters);
-    for (;;) {
+[[noreturn]] void gestureTask(void* pvParameters) {
+    const auto sensor = static_cast<Adafruit_APDS9960*>(pvParameters);
+    while (true) {
         sensor->enableProximityInterrupt();
         Serial.println("Gesture Task: waiting for notification...");
         // Block until notified by ISR. Use ulTaskNotifyTake or semaphore take.
@@ -194,27 +191,26 @@ void gestureTask(void* pvParameters) {
         }
         vTaskDelay(pdMS_TO_TICKS(10));
 
-        unsigned long start_millis = get_uptime_millis();
+        const unsigned long start_millis = get_uptime_millis();
         Serial.println("Gesture task: waiting for proximity leave...");
         uint8_t proximity;
-        ForecastPage last_page = ForecastPage::None;
+        auto last_page = ForecastPage::None;
         while ((proximity = sensor->readProximity()) > 2) {
-            ForecastPage page = detect_forecast_page(proximity);
-            if (page != last_page) {
+            if (const ForecastPage page = detect_forecast_page(proximity); page != last_page) {
                 processProximity(page);
                 last_page = page;
             }
             vTaskDelay(pdMS_TO_TICKS(100));
-            unsigned long current_millis = get_uptime_millis();
-            if (current_millis - start_millis > 30 * 1000UL) {
+            if (const unsigned long current_millis = get_uptime_millis();
+                current_millis - start_millis > 30 * 1000UL) {
                 Serial.println("Gesture task: timeout reached, exiting gesture display.");
                 break;
             }
         }
         Serial.println("Gesture task: proximity cleared.");
-        unsigned long end_millis = get_uptime_millis();
-        unsigned long elapsed = end_millis - start_millis;
-        if (long left = FORECAST_MINIMAL_DISPLAY_TIME_SECONDS * 1000UL - elapsed; left > 0) {
+        const unsigned long end_millis = get_uptime_millis();
+        const long elapsed = static_cast<long>(end_millis - start_millis);
+        if (const long left = FORECAST_MINIMAL_DISPLAY_TIME_SECONDS * 1000L - elapsed; left > 0) {
             Serial.printf(
                 "Gesture task: waiting for %ld milliseconds before returning to time display.\n",
                 left);
@@ -231,11 +227,12 @@ void gestureTask(void* pvParameters) {
 }
 
 void ntpUpdateTask(void* pvParameters) {
+    // TODO: Toggle `wifi_enabled` depending on WiFi status.
     while (wifi_enabled) {
         vTaskDelay(pdMS_TO_TICKS(60 * 60 * 1000)); // sync with NTP servers once an hour
         timeClient.update();                       // Non-blocking sync
     }
-    vTaskDelete(NULL);
+    vTaskDelete(nullptr);
 }
 
 void prepareMatrixDisplay(MD_Parola& display) {
@@ -256,10 +253,10 @@ void display_forecast_chart() {
     parola_display.setFont(customFont);
     char format[] = "%d ";
     format[sizeof(format) - 2] = Icons::DEG_C_CODE;
-    parola_display.printf(format, int(round(forecast_data.hourly_temps[0])));
+    parola_display.printf(format, static_cast<int>(round(forecast_data.hourly_temps[0])));
     parola_display.setFont(nullptr);
-    auto columns_bits = forecast_to_columns<FORECAST_HOURS>(forecast_data);
-    for (int i = 0; i < 16 && i < FORECAST_HOURS && i < MATRIX_WIDTH; i++) {
+    const auto columns_bits = forecast_to_columns<FORECAST_HOURS>(forecast_data);
+    for (int i = 0; i < FORECAST_HOURS && i < MATRIX_WIDTH; i++) {
         parola_display.getGraphicObject()->setColumn(FORECAST_HOURS - 1 - i,
                                                      reverse_bits_compact(columns_bits[i]));
     }
@@ -267,21 +264,22 @@ void display_forecast_chart() {
 
 void display_precip_chart() {
     parola_display.displayClear();
-    char iconStr[2] = {Icons::RAIN_CODE, '\0'};
-    parola_display.print(iconStr);
-    auto columns_bits = forecast_to_columns_precip<FORECAST_HOURS>(forecast_data);
-    for (int i = 0; i < 16 && i < FORECAST_HOURS && i < MATRIX_WIDTH; i++) {
+    constexpr char icon_str[2] = {Icons::RAIN_CODE, '\0'};
+    parola_display.print(icon_str);
+    const auto columns_bits = forecast_to_columns_precip<FORECAST_HOURS>(forecast_data);
+    for (int i = 0; i < FORECAST_HOURS && i < MATRIX_WIDTH; i++) {
         parola_display.getGraphicObject()->setColumn(FORECAST_HOURS - 1 - i,
                                                      reverse_bits_compact(columns_bits[i]));
     }
 }
 
-void display_seconds(int current_second) {
+void display_seconds(const int current_second) {
     // Display the current second indicator on the bottom row of the matrix
     static int last_column = current_second;
-    int max_columns = parola_display.getGraphicObject()->getColumnCount();
-    int current_second_column = max_columns - 1 - map(current_second, 0, 59, 0, max_columns - 1);
-    if (current_second_column != last_column) {
+    const int max_columns = parola_display.getGraphicObject()->getColumnCount();
+    if (const int current_second_column =
+            max_columns - 1 - map(current_second, 0, 59, 0, max_columns - 1);
+        current_second_column != last_column) {
         parola_display.getGraphicObject()->setPoint(ROW_SIZE - 1, current_second_column, true);
         parola_display.getGraphicObject()->setPoint(ROW_SIZE - 1, last_column, false);
         last_column = current_second_column;
@@ -296,7 +294,7 @@ void display_temperature_range() {
     parola_display.printf("%s", forecast_buf);
 }
 
-void display_time(String time, MD_Parola& parolaDisplay) {
+void display_time(const String& time, MD_Parola& parolaDisplay) {
     parolaDisplay.setTextAlignment(PA_CENTER);
     parolaDisplay.printf("%s", time.c_str());
 }
@@ -343,8 +341,7 @@ void setup() {
 
 void setup_mdns() {
     // Start the mDNS service
-    esp_err_t err = mdns_init();
-    if (err) {
+    if (const esp_err_t err = mdns_init()) {
         Serial.printf("mDNS Init failed: %d\n", err);
         return;
     }
@@ -354,12 +351,12 @@ void setup_mdns() {
     mdns_instance_name_set(DEVICE_NAME);
     Serial.printf("mDNS responder started. Hostname: %s\n", DEVICE_NAME);
 
-    mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+    mdns_service_add(nullptr, "_http", "_tcp", 80, nullptr, 0);
 }
 
 void loop() {
-    struct tm currentTime = get_local_time();
-    int currentSecond = currentTime.tm_sec;
+    const tm currentTime = get_local_time();
+    const int currentSecond = currentTime.tm_sec;
     wait_until_next_second();
     if (current_page == DisplayPage::Time)
         display_seconds(currentSecond);
