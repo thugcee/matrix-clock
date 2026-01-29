@@ -1,3 +1,4 @@
+#include <WiFi.h>
 #include "forecast.h"
 #include "config.h"
 #include <ArduinoJson.h>

@@ -1,18 +1,7 @@
-#include "apds9960.h"
-#include "config.h"
-#include "display_pages.h"
-#include "font.h"
-#include "forecast.h"
-#include "icons.h"
-#include "mem_mon.h"
-#include "net_utils.h"
-#include "reboot_control.h"
-#include "time_utils.h"
-
-#include "driver/i2c.h"
-#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "driver/i2c.h"
+#include "esp_log.h"
 #include "mdns.h"
 
 #include <Adafruit_APDS9960.h>
@@ -25,6 +14,18 @@
 #include <cstdio>
 #include <sys/time.h>
 #include <ctime>
+
+#include "apds9960.h"
+#include "config.h"
+#include "display_pages.h"
+#include "font.h"
+#include "forecast.h"
+#include "icons.h"
+#include "mem_mon.h"
+#include "net_utils.h"
+#include "reboot_control.h"
+#include "time_utils.h"
+#include "mqtt.h"
 
 volatile DisplayPage current_page = DisplayPage::Time;
 
@@ -51,7 +52,9 @@ static TaskHandle_t gestureTaskHandle = nullptr;
 
 void display_time(const String& time, MD_Parola& parolaDisplay);
 
-
+void setup_mdns();
+void display_forecast_chart();
+void display_temperature_range();
 void display_precip_chart();
 void display_seconds(int current_second);
 
@@ -318,7 +321,9 @@ void setup() {
         parola_display.print("NTP...");
         net_utils::setup_NTP(timeClient);
         initForecastUpdate();
+        #ifdef ENABLE_MDNS
         setup_mdns();
+        #endif
         xTaskCreate(ntpUpdateTask, "Sync Time", 2048, nullptr, tskIDLE_PRIORITY, nullptr);
     }
 

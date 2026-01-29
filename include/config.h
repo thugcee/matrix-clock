@@ -52,6 +52,8 @@ constexpr uint16_t MQTT_BROKER_PORT = 1883;
 constexpr char DEVICE_NAME[] = "sew-matrix-clock";
 constexpr char MQTT_TOPIC_BASE[] = "clock"; // final topics will be "home/light1/command", etc.
 
+#define ENABLE_MDNS // comment out to disable broadcasting the name via mDNS
+
 // Relay GPIOs (default: 3 relays; add 4th if needed)
 constexpr gpio_num_t RELAY_GPIO_1 = GPIO_NUM_25;
 constexpr gpio_num_t RELAY_GPIO_2 = GPIO_NUM_26;
