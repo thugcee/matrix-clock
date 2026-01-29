@@ -1,8 +1,8 @@
+#include <NTPClient.h>
+#include <WiFi.h>
 #include "config.h"
 #include "secrets.h"
 #include "time_utils.h"
-#include <NTPClient.h>
-#include <WiFi.h>
 
 namespace net_utils {
 
