@@ -1,4 +1,5 @@
-.pio
-.vscode
+/.idea
+/.pio
+/.vscode
 build
 src/secrets.cpp
