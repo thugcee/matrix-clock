@@ -1,4 +1,3 @@
-
 # Firmware for ESP32-based Clock and Weather Forecast
 
 **Used hardware:**

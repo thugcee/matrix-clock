@@ -47,6 +47,9 @@ constexpr gpio_num_t APDS_INT_PIN = GPIO_NUM_4;
 // --- Relay / MQTT config ---
 constexpr char MQTT_BROKER_IP[] = "BROKER_IP_PLACEHOLDER"; // replace with e.g. "192.168.1.10"
 constexpr uint16_t MQTT_BROKER_PORT = 1883;
+constexpr char MQTT_BROKER_URI[] = "mqtt://BROKER_IP_PLACEHOLDER"; // e.g. "mqtt://192.168.1.10"
+constexpr char MQTT_USERNAME[] = "user"; // set to your MQTT username
+constexpr char MQTT_PASSWORD[] = "pass"; // set to your MQTT password
 
 // Device and MQTT topic base
 constexpr char DEVICE_NAME[] = "sew-matrix-clock";

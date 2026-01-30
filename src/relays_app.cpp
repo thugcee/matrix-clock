@@ -8,21 +8,18 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/event_groups.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
-#include "esp_system.h"
 #include "mqtt_client.h"
 #include "driver/gpio.h"
 #include <cstdio>
-#include <cstring>
 #include <array>
 
-static const char *TAG = "relays_app";
+static auto TAG = "relays_app";
 
 constexpr size_t RELAY_COUNT = 3; // update if you enable a 4th
-static const gpio_num_t RELAY_GPIOS[RELAY_COUNT] = {
+static constexpr gpio_num_t RELAY_GPIOS[RELAY_COUNT] = {
     RELAY_GPIO_1,
     RELAY_GPIO_2,
     RELAY_GPIO_3
@@ -35,12 +32,12 @@ struct RelayState {
 static std::array<RelayState, RELAY_COUNT> g_states{};
 
 // Helpers: convert logical state to GPIO level considering active HIGH/LOW
-static inline int logical_to_level(bool on) {
+static inline int logical_to_level(const bool on) {
     return (RELAY_ACTIVE_HIGH ? (on ? 1 : 0) : (on ? 0 : 1));
 }
 
 // NVS helpers
-static esp_err_t nvs_init_if_needed() {
+static esp_err_t nvs_init_and_erase_if_needed() {
     esp_err_t r = nvs_flash_init();
     if (r == ESP_ERR_NVS_NO_FREE_PAGES || r == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_LOGW(TAG, "NVS partition format required, erasing...");
@@ -50,10 +47,10 @@ static esp_err_t nvs_init_if_needed() {
     return r;
 }
 
-static bool nvs_load_state(size_t idx, bool &out_on) {
+static bool nvs_load_state(const size_t idx, bool &out_on) {
     nvs_handle_t handle;
     char key[16];
-    std::snprintf(key, sizeof(key), NVS_KEY_FMT, unsigned(idx + 1)); // r1..rN
+    std::snprintf(key, sizeof(key), NVS_KEY_FMT, static_cast<unsigned>(idx + 1)); // r1..rN
     esp_err_t r = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
     if (r != ESP_OK) return false;
     uint8_t val = 0;
@@ -66,13 +63,13 @@ static bool nvs_load_state(size_t idx, bool &out_on) {
     return false;
 }
 
-static esp_err_t nvs_save_state(size_t idx, bool on) {
+static esp_err_t nvs_save_state(const size_t idx, const bool on) {
     nvs_handle_t handle;
     char key[16];
-    std::snprintf(key, sizeof(key), NVS_KEY_FMT, unsigned(idx + 1)); // r1..rN
+    std::snprintf(key, sizeof(key), NVS_KEY_FMT, static_cast<unsigned>(idx + 1)); // r1..rN
     esp_err_t r = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
     if (r != ESP_OK) return r;
-    uint8_t val = on ? 1 : 0;
+    const uint8_t val = on ? 1 : 0;
     r = nvs_set_u8(handle, key, val);
     if (r == ESP_OK) r = nvs_commit(handle);
     nvs_close(handle);
@@ -80,10 +77,10 @@ static esp_err_t nvs_save_state(size_t idx, bool on) {
 }
 
 // MQTT topic helpers
-static void build_topic(char *buf, size_t buf_sz, const char *purpose, size_t relay_idx) {
+static void build_topic(char *buf, size_t buf_sz, const char *purpose, const size_t relay_idx) {
     // purpose: "command" or "state"
     // topic: MQTT_TOPIC_BASE/light{N}/{purpose}
-    std::snprintf(buf, buf_sz, "%s/light%u/%s", MQTT_TOPIC_BASE, unsigned(relay_idx + 1), purpose);
+    std::snprintf(buf, buf_sz, "%s/light%u/%s", MQTT_TOPIC_BASE, static_cast<unsigned>(relay_idx + 1), purpose);
 }
 
 static esp_mqtt_client_handle_t mqtt_client = nullptr;
@@ -102,12 +99,12 @@ static void publish_state(size_t idx) {
 }
 
 // Build discovery topic: homeassistant/switch/<device>_lightN/config
-static void build_discovery_topic(char *buf, size_t buf_sz, size_t idx) {
-    std::snprintf(buf, buf_sz, "homeassistant/switch/%s_light%u/config", DEVICE_NAME, unsigned(idx + 1));
+static void build_discovery_topic(char *buf, const size_t buf_sz, const size_t idx) {
+    std::snprintf(buf, buf_sz, "homeassistant/switch/%s_light%u/config", DEVICE_NAME, static_cast<unsigned>(idx + 1));
 }
 
 // Build discovery payload (retained) — minimal fields
-static void publish_discovery(size_t idx) {
+static void publish_discovery(const size_t idx) {
     if (!mqtt_client) return;
     char topic[128];
     build_discovery_topic(topic, sizeof(topic), idx);
@@ -120,24 +117,23 @@ static void publish_discovery(size_t idx) {
     // Unique ID and JSON payload
     char payload[512];
     std::snprintf(payload, sizeof(payload),
-                  "{\"name\":\"%s light%u\",\"uniq_id\":\"%s_light%u\",\"cmd_t\":\"%s\",\"stat_t\":\"%s\",\"qos\":0,\"pl_on\":\"ON\",\"pl_off\":\"OFF\",\"~\":\"\"}",
-                  DEVICE_NAME, unsigned(idx + 1),
-                  DEVICE_NAME, unsigned(idx + 1),
+                  R"({"name":"%s light%u","uniq_id":"%s_light%u","cmd_t":"%s","stat_t":"%s","qos":0,"pl_on":"ON","pl_off":"OFF","~":""})",
+                  DEVICE_NAME, static_cast<unsigned>(idx + 1),
+                  DEVICE_NAME, static_cast<unsigned>(idx + 1),
                   cmd_topic, state_topic);
 
     // Publish retained so Home Assistant can discover after restart
-    int msg_id = esp_mqtt_client_publish(mqtt_client, topic, payload, 0, 0, 1);
+    const int msg_id = esp_mqtt_client_publish(mqtt_client, topic, payload, 0, 0, 1);
     ESP_LOGI(TAG, "Published discovery %s (msg_id=%d)", topic, msg_id);
 }
 
 // Apply logical state to GPIO and persist & publish
-static void apply_state(size_t idx, bool on) {
+static void apply_state(const size_t idx, const bool on) {
     if (idx >= RELAY_COUNT) return;
     g_states[idx].on = on;
-    int level = logical_to_level(on);
+    const int level = logical_to_level(on);
     gpio_set_level(RELAY_GPIOS[idx], level);
-    esp_err_t r = nvs_save_state(idx, on);
-    if (r != ESP_OK) {
+    if (const esp_err_t r = nvs_save_state(idx, on); r != ESP_OK) {
         ESP_LOGW(TAG, "Failed save state r%u: %d", unsigned(idx + 1), r);
     }
     publish_state(idx);
@@ -183,7 +179,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
             build_topic(expected, sizeof(expected), "command", i);
             if (topic == expected) {
                 // Accept "ON"/"OFF" (case-insensitive) and "1"/"0"
-                if (payload.size() >= 1) {
+                if (!payload.empty()) {
                     if (payload == "ON" || payload == "on" || payload == "1") {
                         apply_state(i, true);
                     } else if (payload == "OFF" || payload == "off" || payload == "0") {
@@ -208,14 +204,13 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event) {
 }
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
-    mqtt_event_handler_cb((esp_mqtt_event_handle_t)event_data);
+    mqtt_event_handler_cb(static_cast<esp_mqtt_event_handle_t>(event_data));
 }
 
 static void start_mqtt_client_task(void *pvParameters) {
     ESP_LOGI(TAG, "Relays MQTT task starting...");
     // Initialize NVS
-    esp_err_t r = nvs_init_if_needed();
-    if (r != ESP_OK) {
+    if (esp_err_t r = nvs_init_and_erase_if_needed(); r != ESP_OK) {
         ESP_LOGE(TAG, "NVS init failed: %d", r);
     }
 
@@ -226,8 +221,8 @@ static void start_mqtt_client_task(void *pvParameters) {
     io_conf.pin_bit_mask = 0;
     io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
-    for (size_t i = 0; i < RELAY_COUNT; ++i) {
-        io_conf.pin_bit_mask |= (1ULL << RELAY_GPIOS[i]);
+    for (auto i : RELAY_GPIOS) {
+        io_conf.pin_bit_mask |= (1ULL << i);
     }
     gpio_config(&io_conf);
 
@@ -250,10 +245,10 @@ static void start_mqtt_client_task(void *pvParameters) {
 
     // Prepare MQTT client config
     char uri[64];
-    std::snprintf(uri, sizeof(uri), "mqtt://%s:%u", MQTT_BROKER_IP, unsigned(MQTT_BROKER_PORT));
+    std::snprintf(uri, sizeof(uri), "mqtt://%s:%u", MQTT_BROKER_IP, static_cast<unsigned>(MQTT_BROKER_PORT));
     esp_mqtt_client_config_t mqtt_cfg{};
-    mqtt_cfg.uri = uri;
-    mqtt_cfg.client_id = DEVICE_NAME;
+    mqtt_cfg.broker.address.uri = uri;
+    mqtt_cfg.credentials.client_id = DEVICE_NAME;
 
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
     if (!mqtt_client) {
@@ -262,9 +257,8 @@ static void start_mqtt_client_task(void *pvParameters) {
         return;
     }
 
-    esp_mqtt_client_register_event(mqtt_client, (esp_mqtt_event_id_t)ESP_EVENT_ANY_ID, mqtt_event_handler, nullptr);
-    esp_err_t err = esp_mqtt_client_start(mqtt_client);
-    if (err != ESP_OK) {
+    esp_mqtt_client_register_event(mqtt_client, static_cast<esp_mqtt_event_id_t>(ESP_EVENT_ANY_ID), mqtt_event_handler, nullptr);
+    if (esp_err_t err = esp_mqtt_client_start(mqtt_client); err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start mqtt client: %d", err);
     }
 
@@ -274,11 +268,12 @@ static void start_mqtt_client_task(void *pvParameters) {
     }
 }
 
-// Public API to start the relays app. Call this from Arduino setup() AFTER WiFi is connected.
-extern "C" void relays_app_start() {
+// Public API to start the "relays" app. Call this from Arduino setup() AFTER WiFi is connected.
+void relays_app_start() {
     // Create the task; it will initialize NVS, GPIOs, and MQTT client
-    BaseType_t r = xTaskCreate(start_mqtt_client_task, "relays_mqtt", 8192, nullptr, 5, nullptr);
-    if (r != pdPASS) {
+    if (BaseType_t r =
+            xTaskCreate(start_mqtt_client_task, "relays_mqtt", 8192, nullptr, 5, nullptr);
+        r != pdPASS) {
         ESP_LOGE(TAG, "Failed to create relays task");
     } else {
         ESP_LOGI(TAG, "Relays task created");

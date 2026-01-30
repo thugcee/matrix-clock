@@ -1,5 +1,6 @@
 /.idea
 /.pio
 /.vscode
-build
-src/secrets.cpp
+/build
+/src/secrets.cpp
+/managed_components/
