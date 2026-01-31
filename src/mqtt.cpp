@@ -11,11 +11,55 @@
 namespace {
 constexpr const char* TAG = "MQTT";
 constexpr const char* MQTT_OTA_TOPIC = "device/ota/url";
+static esp_mqtt_client_handle_t mqtt_client = nullptr;
 } // namespace
 
 static void build_relay_topic(char* buf, size_t buf_sz, const char* purpose, size_t relay_idx) {
     std::snprintf(buf, buf_sz, "%s/light%u/%s", MQTT_TOPIC_BASE,
                   static_cast<unsigned>(relay_idx + 1), purpose);
+}
+
+static void build_discovery_topic(char* buf, const size_t buf_sz, const size_t idx) {
+    std::snprintf(buf, buf_sz, "homeassistant/switch/%s_light%u/config", DEVICE_NAME,
+                  static_cast<unsigned>(idx + 1));
+}
+
+static void publish_relay_state(esp_mqtt_client_handle_t client, size_t idx) {
+    char topic[64];
+    build_relay_topic(topic, sizeof(topic), "state", idx);
+    const char* msg = relays_app_get_state(idx) ? "ON" : "OFF";
+    int msg_id = esp_mqtt_client_publish(client, topic, msg, 0, 0, 1);
+    ESP_LOGI(TAG, "Published %s -> %s (msg_id=%d)", topic, msg, msg_id);
+}
+
+static void publish_relay_discovery(esp_mqtt_client_handle_t client, size_t idx) {
+    char topic[128];
+    build_discovery_topic(topic, sizeof(topic), idx);
+
+    char state_topic[64], cmd_topic[64];
+    build_relay_topic(state_topic, sizeof(state_topic), "state", idx);
+    build_relay_topic(cmd_topic, sizeof(cmd_topic), "command", idx);
+
+    char payload[512];
+    std::snprintf(
+        payload, sizeof(payload),
+        R"({"name":"%s light%u","uniq_id":"%s_light%u","cmd_t":"%s","stat_t":"%s","qos":0,"pl_on":"ON","pl_off":"OFF","~":""})",
+        DEVICE_NAME, static_cast<unsigned>(idx + 1), DEVICE_NAME, static_cast<unsigned>(idx + 1),
+        cmd_topic, state_topic);
+
+    const int msg_id = esp_mqtt_client_publish(client, topic, payload, 0, 0, 1);
+    ESP_LOGI(TAG, "Published discovery %s (msg_id=%d)", topic, msg_id);
+}
+
+static void subscribe_relay_topics(esp_mqtt_client_handle_t client) {
+    for (size_t i = 0; i < RELAY_COUNT; ++i) {
+        char topic[64];
+        build_relay_topic(topic, sizeof(topic), "command", i);
+        int msg_id = esp_mqtt_client_subscribe(client, topic, 0);
+        ESP_LOGI(TAG, "Subscribed to %s (msg_id=%d)", topic, msg_id);
+        publish_relay_discovery(client, i);
+        publish_relay_state(client, i);
+    }
 }
 
 static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_t event_id,
@@ -28,7 +72,7 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
 
         esp_mqtt_client_subscribe(event->client, MQTT_OTA_TOPIC, 0);
 
-        relays_app_subscribe_all();
+        subscribe_relay_topics(event->client);
         break;
 
     case MQTT_EVENT_DISCONNECTED:
@@ -75,10 +119,10 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
                 if (!payload.empty()) {
                     if (payload == "ON" || payload == "on" || payload == "1") {
                         relays_app_set_state(i, true);
-                        relays_app_publish_state(i);
+                        publish_relay_state(mqtt_client, i);
                     } else if (payload == "OFF" || payload == "off" || payload == "0") {
                         relays_app_set_state(i, false);
-                        relays_app_publish_state(i);
+                        publish_relay_state(mqtt_client, i);
                     } else {
                         ESP_LOGW(TAG, "Unknown payload for %s: %s", expected, payload.c_str());
                     }
@@ -113,17 +157,16 @@ void mqtt_app_start() {
     mqtt_cfg.credentials.username = MQTT_USERNAME;
     mqtt_cfg.credentials.authentication.password = MQTT_PASSWORD;
 
-    esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
-    if (!client) {
+    mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
+    if (!mqtt_client) {
         ESP_LOGE(TAG, "Failed to init MQTT client");
         return;
     }
 
-    relays_set_mqtt_client(client);
-    esp_mqtt_client_register_event(client, static_cast<esp_mqtt_event_id_t>(ESP_EVENT_ANY_ID),
+    esp_mqtt_client_register_event(mqtt_client, static_cast<esp_mqtt_event_id_t>(ESP_EVENT_ANY_ID),
                                    mqtt_event_handler, nullptr);
 
-    if (esp_err_t err = esp_mqtt_client_start(client); err != ESP_OK) {
+    if (esp_err_t err = esp_mqtt_client_start(mqtt_client); err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start MQTT client: %d", err);
     } else {
         ESP_LOGI(TAG, "MQTT client started successfully");

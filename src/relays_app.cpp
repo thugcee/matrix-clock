@@ -5,7 +5,6 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "mqtt_client.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include <array>
@@ -20,7 +19,6 @@ struct RelayState {
 };
 
 static std::array<RelayState, RELAY_COUNT> g_states{};
-static esp_mqtt_client_handle_t mqtt_client = nullptr;
 
 static inline int logical_to_level(const bool on) {
     return (RELAY_ACTIVE_HIGH ? (on ? 1 : 0) : (on ? 0 : 1));
@@ -68,20 +66,6 @@ static esp_err_t nvs_save_state(const size_t idx, const bool on) {
     return r;
 }
 
-static void build_topic(char* buf, size_t buf_sz, const char* purpose, const size_t relay_idx) {
-    std::snprintf(buf, buf_sz, "%s/light%u/%s", MQTT_TOPIC_BASE,
-                  static_cast<unsigned>(relay_idx + 1), purpose);
-}
-
-static void build_discovery_topic(char* buf, const size_t buf_sz, const size_t idx) {
-    std::snprintf(buf, buf_sz, "homeassistant/switch/%s_light%u/config", DEVICE_NAME,
-                  static_cast<unsigned>(idx + 1));
-}
-
-esp_mqtt_client_handle_t relays_get_mqtt_client() { return mqtt_client; }
-
-void relays_set_mqtt_client(esp_mqtt_client_handle_t client) { mqtt_client = client; }
-
 void relays_app_init() {
     ESP_LOGI(TAG, "Initializing relays app...");
 
@@ -128,54 +112,4 @@ bool relays_app_get_state(size_t idx) {
     if (idx >= RELAY_COUNT)
         return false;
     return g_states[idx].on;
-}
-
-void relays_app_publish_state(size_t idx) {
-    if (!mqtt_client || idx >= RELAY_COUNT)
-        return;
-    char topic[64];
-    build_topic(topic, sizeof(topic), "state", idx);
-    const char* msg = g_states[idx].on ? "ON" : "OFF";
-    int msg_id = esp_mqtt_client_publish(mqtt_client, topic, msg, 0, 0, 1);
-    ESP_LOGI(TAG, "Published %s -> %s (msg_id=%d)", topic, msg, msg_id);
-}
-
-void relays_app_publish_discovery(size_t idx) {
-    if (!mqtt_client || idx >= RELAY_COUNT)
-        return;
-    char topic[128];
-    build_discovery_topic(topic, sizeof(topic), idx);
-
-    char state_topic[64], cmd_topic[64];
-    build_topic(state_topic, sizeof(state_topic), "state", idx);
-    build_topic(cmd_topic, sizeof(cmd_topic), "command", idx);
-
-    char payload[512];
-    std::snprintf(
-        payload, sizeof(payload),
-        R"({"name":"%s light%u","uniq_id":"%s_light%u","cmd_t":"%s","stat_t":"%s","qos":0,"pl_on":"ON","pl_off":"OFF","~":""})",
-        DEVICE_NAME, static_cast<unsigned>(idx + 1), DEVICE_NAME, static_cast<unsigned>(idx + 1),
-        cmd_topic, state_topic);
-
-    const int msg_id = esp_mqtt_client_publish(mqtt_client, topic, payload, 0, 0, 1);
-    ESP_LOGI(TAG, "Published discovery %s (msg_id=%d)", topic, msg_id);
-}
-
-void relays_app_publish_all() {
-    for (size_t i = 0; i < RELAY_COUNT; ++i) {
-        relays_app_publish_state(i);
-    }
-}
-
-void relays_app_subscribe_all() {
-    if (!mqtt_client)
-        return;
-    for (size_t i = 0; i < RELAY_COUNT; ++i) {
-        char topic[64];
-        build_topic(topic, sizeof(topic), "command", i);
-        int msg_id = esp_mqtt_client_subscribe(mqtt_client, topic, 0);
-        ESP_LOGI(TAG, "Subscribed to %s (msg_id=%d)", topic, msg_id);
-        relays_app_publish_discovery(i);
-        relays_app_publish_state(i);
-    }
 }
