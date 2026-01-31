@@ -1,7 +1,7 @@
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "driver/i2c.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "mdns.h"
 
 #include <Adafruit_APDS9960.h>
@@ -12,8 +12,8 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <cstdio>
-#include <sys/time.h>
 #include <ctime>
+#include <sys/time.h>
 
 #include "apds9960.h"
 #include "config.h"
@@ -22,10 +22,11 @@
 #include "forecast.h"
 #include "icons.h"
 #include "mem_mon.h"
+#include "mqtt.h"
 #include "net_utils.h"
+#include "ota.h"
 #include "reboot_control.h"
 #include "time_utils.h"
-#include "mqtt.h"
 
 volatile DisplayPage current_page = DisplayPage::Time;
 
@@ -41,7 +42,7 @@ Adafruit_APDS9960 apds;
 
 // LED Matrix Display
 auto parola_display = MD_Parola(DISPLAY_HARDWARE_TYPE, DISPLAY_DATA_PIN, DISPLAY_CLK_PIN,
-                                     DISPLAY_CS_PIN, DISPLAY_MAX_DEVICES);
+                                DISPLAY_CS_PIN, DISPLAY_MAX_DEVICES);
 
 String time_data = "Err time";
 ForecastData16 forecast_data{};
@@ -321,9 +322,11 @@ void setup() {
         parola_display.print("NTP...");
         net_utils::setup_NTP(timeClient);
         initForecastUpdate();
-        #ifdef ENABLE_MDNS
+        ota_app_start();
+        mqtt_app_start();
+#ifdef ENABLE_MDNS
         setup_mdns();
-        #endif
+#endif
         xTaskCreate(ntpUpdateTask, "Sync Time", 2048, nullptr, tskIDLE_PRIORITY, nullptr);
     }
 
