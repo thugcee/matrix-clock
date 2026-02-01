@@ -28,7 +28,7 @@ static void publish_relay_state(esp_mqtt_client_handle_t client, size_t idx) {
     char topic[64];
     build_relay_topic(topic, sizeof(topic), "state", idx);
     const char* msg = relays_app_get_state(idx) ? "ON" : "OFF";
-    int msg_id = esp_mqtt_client_publish(client, topic, msg, 0, 0, 1);
+    const int msg_id = esp_mqtt_client_publish(client, topic, msg, 0, 0, 1);
     ESP_LOGI(TAG, "Published %s -> %s (msg_id=%d)", topic, msg, msg_id);
 }
 

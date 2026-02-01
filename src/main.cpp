@@ -27,6 +27,17 @@
 #include "reboot_control.h"
 #include "time_utils.h"
 
+namespace {
+constexpr const char* TAG_MAIN = "MAIN";
+constexpr const char* TAG_WEATHER = "WEATHER";
+constexpr const char* TAG_TIME = "TIME";
+constexpr const char* TAG_GESTURE = "GESTURE";
+constexpr const char* TAG_DISPLAY = "DISPLAY";
+constexpr const char* TAG_I2C = "I2C";
+constexpr const char* TAG_MDNS = "MDNS";
+constexpr const char* TAG_NTP = "NTP";
+} // namespace
+
 volatile DisplayPage current_page = DisplayPage::Time;
 
 WiFiUDP net_UDP;
@@ -63,23 +74,23 @@ void display_seconds(int current_second);
  * @param pvParameters Task parameters (not used here).
  */
 [[noreturn]] void weatherUpdateTask(void* pvParameters) {
-    Serial.println("Weather update task started.");
+    ESP_LOGI(TAG_WEATHER, "Weather update task started.");
     for (;;) { // Infinite loop for the task
-        Serial.println("[Task] Fetching new weather forecast...");
+        ESP_LOGI(TAG_WEATHER, "Fetching new weather forecast...");
         const int startHour = get_GMT_hour();
         if (ForecastResult newForecast = get_forecast<FORECAST_HOURS>(startHour); newForecast) {
             if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
                 forecast_data = newForecast.unwrap();
                 xSemaphoreGive(display_data_sem);
-                Serial.println("[Task] Forecast updated successfully.");
+                ESP_LOGI(TAG_WEATHER, "Forecast updated successfully.");
             }
-            Serial.println("[Task] Successfully fetched forecast.");
+            ESP_LOGI(TAG_WEATHER, "Successfully fetched forecast.");
         } else {
             if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
                 forecast_data = forecast_err_data;
                 xSemaphoreGive(display_data_sem);
             }
-            Serial.println("[Task] Error fetching forecast: " + newForecast.unwrapErr());
+            ESP_LOGE(TAG_WEATHER, "Error fetching forecast: %s", newForecast.unwrapErr().c_str());
         }
 
         // Wait for one hour before the next run
@@ -95,8 +106,8 @@ void display_seconds(int current_second);
         if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
             if (current_page == DisplayPage::Time) {
                 time_data = tmp;
-                Serial.printf("[minute-change] displayed: %s, current time: %s\n,",
-                              time_data.c_str(), get_formatted_local_time().c_str());
+                ESP_LOGI(TAG_TIME, "displayed: %s, current time: %s", time_data.c_str(),
+                         get_formatted_local_time().c_str());
                 display_time(time_data, parola_display);
             }
             xSemaphoreGive(display_data_sem);
@@ -115,8 +126,8 @@ void display_seconds(int current_second);
         String localTime = get_formatted_local_time();
         format_temp_range(forecast_buf, sizeof(forecast_buf), forecast_data.min_temp,
                           forecast_data.max_temp);
-        Serial.println("⏱️  Device Uptime: " + uptime + " | Real time: " + localTime +
-                       " | Forecast: " + forecast_buf);
+        ESP_LOGI(TAG_MAIN, "Device Uptime: %s | Real time: %s | Forecast: %s", uptime.c_str(),
+                 localTime.c_str(), forecast_buf);
         vTaskDelay(pdMS_TO_TICKS(STATUS_UPDATE_INTERVAL_SECONDS * 1000));
     }
 }
@@ -125,18 +136,19 @@ void initForecastUpdate() {
     // Initialize the weather forecast task
     display_data_sem = xSemaphoreCreateMutex();
     if (display_data_sem == nullptr) {
-        Serial.println("Error: Failed to create mutex.");
+        ESP_LOGE(TAG_MAIN, "Failed to create mutex.");
         forecast_enabled = false; // Disable forecast updates
     }
     if (wifi_enabled && forecast_enabled) {
         xTaskCreate(weatherUpdateTask, "WeatherUpdate", 8192, nullptr, 1, nullptr);
     } else {
-        Serial.println("Weather updates are disabled.");
+        ESP_LOGW(TAG_WEATHER, "Weather updates are disabled.");
     }
 }
 
 void initSerial() {
     Serial.begin(115200);
+    ESP_LOGI(TAG_MAIN, "Serial initialized at 115200 baud");
     while (!Serial) {
         delay(10);
     } // wait for Serial on some boards
@@ -182,11 +194,11 @@ void IRAM_ATTR gpio_isr_handler(void* arg) {
     const auto sensor = static_cast<Adafruit_APDS9960*>(pvParameters);
     while (true) {
         sensor->enableProximityInterrupt();
-        Serial.println("Gesture Task: waiting for notification...");
+        ESP_LOGI(TAG_GESTURE, "Waiting for proximity notification...");
         // Block until notified by ISR. Use ulTaskNotifyTake or semaphore take.
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY); // clear on exit
 
-        Serial.println("Gesture Task: notification detected...");
+        ESP_LOGI(TAG_GESTURE, "Proximity notification detected");
         sensor->disableProximityInterrupt();
         if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
             current_page = DisplayPage::Forecast;
@@ -195,7 +207,7 @@ void IRAM_ATTR gpio_isr_handler(void* arg) {
         vTaskDelay(pdMS_TO_TICKS(10));
 
         const unsigned long start_millis = get_uptime_millis();
-        Serial.println("Gesture task: waiting for proximity leave...");
+        ESP_LOGI(TAG_GESTURE, "Waiting for proximity leave...");
         uint8_t proximity;
         auto last_page = ForecastPage::None;
         while ((proximity = sensor->readProximity()) > 2) {
@@ -206,17 +218,16 @@ void IRAM_ATTR gpio_isr_handler(void* arg) {
             vTaskDelay(pdMS_TO_TICKS(100));
             if (const unsigned long current_millis = get_uptime_millis();
                 current_millis - start_millis > 30 * 1000UL) {
-                Serial.println("Gesture task: timeout reached, exiting gesture display.");
+                ESP_LOGI(TAG_GESTURE, "Timeout reached, exiting gesture display");
                 break;
             }
         }
-        Serial.println("Gesture task: proximity cleared.");
+        ESP_LOGI(TAG_GESTURE, "Proximity cleared");
         const unsigned long end_millis = get_uptime_millis();
         const long elapsed = static_cast<long>(end_millis - start_millis);
         if (const long left = FORECAST_MINIMAL_DISPLAY_TIME_SECONDS * 1000L - elapsed; left > 0) {
-            Serial.printf(
-                "Gesture task: waiting for %ld milliseconds before returning to time display.\n",
-                left);
+            ESP_LOGI(TAG_GESTURE, "Waiting for %ld milliseconds before returning to time display",
+                     left);
             vTaskDelay(pdMS_TO_TICKS(left));
         }
         if (xSemaphoreTake(display_data_sem, portMAX_DELAY) == pdTRUE) {
@@ -233,7 +244,11 @@ void ntpUpdateTask(void* pvParameters) {
     // TODO: Toggle `wifi_enabled` depending on WiFi status.
     while (wifi_enabled) {
         vTaskDelay(pdMS_TO_TICKS(60 * 60 * 1000)); // sync with NTP servers once an hour
-        timeClient.update();                       // Non-blocking sync
+        if (timeClient.update()) {
+            ESP_LOGI(TAG_NTP, "Update successful");
+        } else {
+            ESP_LOGE(TAG_NTP, "Update failed");
+        }
     }
     vTaskDelete(nullptr);
 }
@@ -247,7 +262,7 @@ void prepareMatrixDisplay(MD_Parola& display) {
     display.addChar(Icons::DEG_C_CODE, Icons::DEG_C_DATA);
     display.addChar('7', Icons::OTHER_7);
     display.setTextAlignment(PA_CENTER);
-    Serial.println("Matrix display initialized.");
+    ESP_LOGI(TAG_DISPLAY, "Matrix display initialized");
 }
 
 void display_forecast_chart() {
@@ -311,7 +326,7 @@ void setup() {
 
     // Initialize I2C
     Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ_HZ);
-    Serial.println("I2C initialized.");
+    ESP_LOGI(TAG_I2C, "I2C initialized");
 
     prepareMatrixDisplay(parola_display);
 
@@ -351,14 +366,14 @@ void setup() {
 void setup_mdns() {
     // Start the mDNS service
     if (const esp_err_t err = mdns_init()) {
-        Serial.printf("mDNS Init failed: %d\n", err);
+        ESP_LOGE(TAG_MDNS, "Init failed: %s", esp_err_to_name(err));
         return;
     }
 
     // Set the hostname and instance name
     mdns_hostname_set(DEVICE_NAME);
     mdns_instance_name_set(DEVICE_NAME);
-    Serial.printf("mDNS responder started. Hostname: %s\n", DEVICE_NAME);
+    ESP_LOGI(TAG_MDNS, "Responder started. Hostname: %s", DEVICE_NAME);
 
     mdns_service_add(nullptr, "_http", "_tcp", 80, nullptr, 0);
 }
