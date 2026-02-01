@@ -9,9 +9,9 @@
 #include <string>
 
 namespace {
-constexpr const char* TAG = "MQTT";
-constexpr const char* MQTT_OTA_TOPIC = "device/ota/url";
-static esp_mqtt_client_handle_t mqtt_client = nullptr;
+constexpr auto TAG = "MQTT";
+constexpr auto MQTT_OTA_TOPIC = "device/ota/url";
+esp_mqtt_client_handle_t mqtt_client = nullptr;
 } // namespace
 
 static void build_relay_topic(char* buf, size_t buf_sz, const char* purpose, size_t relay_idx) {
@@ -62,6 +62,21 @@ static void subscribe_relay_topics(esp_mqtt_client_handle_t client) {
     }
 }
 
+static void handle_ota_topic(const esp_mqtt_event_t* event) {
+    if (event->data_len >= 256) {
+        ESP_LOGE(TAG, "Received OTA URL is too long.");
+        return;
+    }
+    char urlBuffer[256];
+    memcpy(urlBuffer, event->data, event->data_len);
+    urlBuffer[event->data_len] = '\0';
+
+    ESP_LOGI(TAG, "Received firmware URL via MQTT: %s", urlBuffer);
+    if (xQueueSend(otaUrlQueue, urlBuffer, pdMS_TO_TICKS(100)) != pdPASS) {
+        ESP_LOGE(TAG, "Error sending URL to OTA queue.");
+    }
+}
+
 static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_t event_id,
                                void* event_data) {
     const auto* event = static_cast<const esp_mqtt_event_handle_t>(event_data);
@@ -96,22 +111,13 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
         std::string payload(event->data, event->data_len);
         ESP_LOGI(TAG, "MQTT_EVENT_DATA topic=%s payload=%s", topic.c_str(), payload.c_str());
 
+        // OTA
         if (topic == MQTT_OTA_TOPIC) {
-            if (event->data_len >= 256) {
-                ESP_LOGE(TAG, "Received OTA URL is too long.");
-                break;
-            }
-            char urlBuffer[256];
-            memcpy(urlBuffer, event->data, event->data_len);
-            urlBuffer[event->data_len] = '\0';
-
-            ESP_LOGI(TAG, "Received firmware URL via MQTT: %s", urlBuffer);
-            if (xQueueSend(otaUrlQueue, urlBuffer, pdMS_TO_TICKS(100)) != pdPASS) {
-                ESP_LOGE(TAG, "Error sending URL to OTA queue.");
-            }
+            handle_ota_topic(event);
             break;
         }
 
+        // Relays
         for (size_t i = 0; i < RELAY_COUNT; ++i) {
             char expected[64];
             build_relay_topic(expected, sizeof(expected), "command", i);

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "driver/i2c.h"
+// ReSharper disable once CppUnusedIncludeDirective
 #include <MD_Parola.h>
-#include <chrono>
 
 // GPIO pin for built-in LED
 constexpr int CONFIG_BLINK_GPIO = 2;
@@ -56,6 +56,7 @@ constexpr char DEVICE_NAME[] = "sew-matrix-clock";
 constexpr char MQTT_TOPIC_BASE[] = "clock"; // final topics will be "home/light1/command", etc.
 
 #define ENABLE_MDNS // comment out to disable broadcasting the name via mDNS
+#define ENABLE_MQTT // comment out to disable MQTT activation
 
 // Relay GPIOs (default: 3 relays; add 4th if needed)
 constexpr gpio_num_t RELAY_GPIO_1 = GPIO_NUM_25;

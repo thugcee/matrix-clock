@@ -13,7 +13,6 @@
 #include <WiFiUdp.h>
 #include <cstdio>
 #include <ctime>
-#include <sys/time.h>
 
 #include "apds9960.h"
 #include "config.h"
@@ -323,7 +322,9 @@ void setup() {
         net_utils::setup_NTP(timeClient);
         initForecastUpdate();
         ota_app_start();
+#ifdef ENABLE_MQTT
         mqtt_app_start();
+#endif
 #ifdef ENABLE_MDNS
         setup_mdns();
 #endif
